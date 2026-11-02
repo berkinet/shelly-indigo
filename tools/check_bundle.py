@@ -27,8 +27,25 @@ with zipfile.ZipFile(archive) as package, tempfile.TemporaryDirectory() as tempo
         metadata, = packages.glob(f'{distribution}-*.dist-info')
         assert any(p.name.upper().startswith(('LICENSE', 'COPYING'))
                    for p in metadata.rglob('*')), f'Missing license: {distribution}'
-    script = ('import sys; sys.path[:0] = ' + repr([str(packages), str(bundle / 'Server Plugin')]) +
-              '; import websocket, zeroconf, ifaddr; from shelly.worker import Worker; '
-              'print("Portable bundle imports passed")')
-    subprocess.run([sys.executable, '-I', '-S', '-c', script], check=True)
+    # Do not pre-add Packages: the entry point must find its own dependencies.
+    # Indigo executes plugin.py rather than importing it as a normal module.
+    script = """
+from pathlib import Path
+import sys
+import types
+server_plugin, packages = (Path(value).resolve() for value in sys.argv[1:])
+sys.path.insert(0, str(server_plugin))
+sys.modules['indigo'] = types.SimpleNamespace(PluginBase=object)
+namespace = {'__name__': 'indigo_plugin_exec'}
+source = (server_plugin / 'plugin.py').read_text()
+exec(compile(source, 'plugin.py', 'exec'), namespace)
+assert '__file__' not in namespace
+assert isinstance(namespace['Plugin'], type)
+import websocket, zeroconf, ifaddr
+for module in (websocket, zeroconf, ifaddr):
+    assert Path(module.__file__).resolve().is_relative_to(packages), module.__file__
+print('Indigo entry-point execution and bundled dependency imports passed')
+"""
+    subprocess.run([sys.executable, '-I', '-S', '-c', script,
+                    str(bundle / 'Server Plugin'), str(packages)], check=True)
 print(f'Validated {archive.name}')

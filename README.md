@@ -54,11 +54,12 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.0.indigoPlugin.zip`, with portable Python
+The build writes `dist/Shelly-0.1.1.indigoPlugin.zip`, with portable Python
 dependencies and their license notices bundled. The checked-in source alone
 needs the dependency build before installation. Tests use an Indigo API double
 and a real localhost WebSocket connection to a simulated Shelly; they never
-operate home devices. CI runs the same tests and validates the release archive.
+operate home devices. CI runs the same tests and validates the release archive, including executing
+its entry point without `__file__` as Indigo does.
 
 See [architecture and milestones](docs/architecture.md) and
 [third-party licenses](docs/third-party.md). Project code is [MIT licensed](LICENSE).

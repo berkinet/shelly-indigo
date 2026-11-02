@@ -1,11 +1,14 @@
 """Indigo adapter. Network workers never call Indigo APIs directly."""
-import os
+from pathlib import Path
 import queue
 import sys
 import threading
 import time
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "Packages"))
+# Indigo executes this entry point without __file__. Imported helper modules
+# have normal module metadata, so anchor bundled dependencies to our package.
+import shelly
+sys.path.insert(0, str(Path(shelly.__file__).resolve().parents[2] / "Packages"))
 import indigo
 from shelly.discovery import Discovery
 from shelly.model import Inventory, endpoint

@@ -111,3 +111,14 @@ class IndigoTests(unittest.TestCase):
         with self.assertRaises(ConnectionError):
             self.plugin._handle('command', '', (1, 'on'))
         worker.command.assert_not_called()
+
+    def test_indigo_exec_loader_without_file_global(self):
+        from pathlib import Path
+        source = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/plugin.py'
+        namespace = {'__name__': 'indigo_plugin_exec'}
+        with patch.object(sys, 'path', list(sys.path)):
+            exec(compile(source.read_text(), 'plugin.py', 'exec'), namespace)
+            plugin = namespace['Plugin']('id', 'name', 'version', {})
+        self.assertNotIn('__file__', namespace)
+        self.assertEqual(plugin.pluginPrefs, {})
+        self.assertEqual(plugin.workers, {})
