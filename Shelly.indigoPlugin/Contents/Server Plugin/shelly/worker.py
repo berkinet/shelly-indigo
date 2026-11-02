@@ -28,11 +28,11 @@ class IdentityChanged(RpcError):
 
 class Worker(threading.Thread):
     def __init__(self, address, emit, password="", expected_id=None, connector=None,
-                 poll_interval=15, config_interval=60, rpc_timeout=8, exclude_id=None):
+                 poll_interval=15, config_interval=60, rpc_timeout=8, exclude_id=None, permitted=None):
         super().__init__(name=f"Shelly-{address}", daemon=True)
         self.address, self.emit, self.password = address, emit, password
         self.expected_id, self.connector = expected_id, connector
-        self.exclude_id = exclude_id
+        self.exclude_id, self.permitted = exclude_id, permitted
         self.poll_interval, self.config_interval, self.rpc_timeout = poll_interval, config_interval, rpc_timeout
         self.commands = queue.Queue(maxsize=32)
         self.stopped = threading.Event()
@@ -295,6 +295,9 @@ class Worker(threading.Thread):
                         break
                     if self.expected_id and identity != self.expected_id:
                         raise IdentityChanged(info)
+                    if self.permitted is not None and not self.permitted(identity):
+                        self.emit("suspended", self.address, info)
+                        break
                     self.expected_id = identity
                     self.device_info = dict(info)
                     self.emit("identified", self.address, dict(info))

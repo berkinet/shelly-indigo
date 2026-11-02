@@ -8,10 +8,6 @@
     <Label>Additional hosts:</Label>
     <Description>Optional comma-separated IP addresses or hostnames for devices on other subnets.</Description>
   </Field>
-  <Field id="password" type="textfield" secure="true" defaultValue="">
-    <Label>Legacy shared password:</Label>
-    <Description>Fallback only for existing Indigo bindings and explicitly entered hosts. Set individual local admin passwords through Shelly → Set Device Password. Leave blank for unprotected devices.</Description>
-  </Field>
   <Field id="logLevel" type="menu" defaultValue="INFO">
     <Label>Event Log level:</Label>
     <List>
@@ -21,6 +17,6 @@
     <Description>Info shows normal activity, warnings and errors. Debug also shows discovery and query messages. Applies immediately; the plugin log file always includes Debug.</Description>
   </Field>
   <Field id="notice" type="label">
-    <Label>Beta: switches, dimmers, binary/button inputs and output metering. Restart after changing connection preferences. Log level changes apply immediately.</Label>
+    <Label>Beta: switches, dimmers, binary/button inputs and output metering. Set local passwords in each device’s configuration. Restart after changing connection preferences. Log level changes apply immediately.</Label>
   </Field>
 </PluginConfig>

@@ -27,3 +27,11 @@
 - Prefer names assigned locally on the Shelly device as prefixes for internal
   IDs in new Indigo names and selectors. Preserve existing Indigo names. Do not
   assume app-only cloud labels are available through the local device API.
+
+- Respect Indigo device communication enable/disable callbacks. Stop and fence a
+  physical worker when its last enabled channel is disabled; Bonjour and explicit
+  hosts must not restart it. Keep enabled sibling channels working.
+- Device-dialog password changes apply only on Save, share one credential per
+  physical identity, and must not persist plaintext in device properties. Blank
+  keeps the saved credential; explicit No password clears it. Password saves must
+  not enable disabled communications.

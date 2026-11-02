@@ -17,6 +17,9 @@ provisioned onto the LAN.
   is separate from transport failure. Missing readings never become fabricated OFF.
 - Queued controls are bounded, expire after ten seconds, and are discarded on
   disconnect. An uncertain transmitted action is never automatically replayed.
+- A physical worker is allowed when at least one configured channel on its unit
+  has communications enabled. A unit whose configured channels are all disabled
+  has no persistent worker. Discovery of unassigned units remains independent.
 - Network workers do not call Indigo APIs. The plugin event loop owns connections,
   inventories and publication. UI catalogs are locked derived snapshots; trigger
   registration and credential access have their own narrow locks.
@@ -65,6 +68,27 @@ stops workers, joins within a total deadline and marks communication unavailable
 A later invocation on the same plugin object rebuilds workers from current bindings
 and explicit hosts. Old producers retain the old closing event and cannot write
 into the new run.
+
+## Communication enable/disable
+
+`deviceStopComm` and `deviceStartComm` enqueue lifecycle changes for the owner loop.
+Stopped channel IDs protect against old IOM copies still showing enabled. Disabling
+the last channel fences/stops the shared worker and preserves offline selector
+entries. Disabling one channel leaves any enabled sibling's worker intact; its
+outage warning identifies the active Indigo channels.
+
+Connection admission checks current binding demand for startup, explicit hosts,
+Bonjour, retry and password paths. A locked identity-policy snapshot lets a worker
+recognize an unknown endpoint's disabled identity after public GetDeviceInfo and
+stop before authentication or status reads. Bonjour names are only hints for
+skipping paused units and remembering endpoints; RPC still verifies identity before
+credentials or binding changes. Re-enable uses the current physical owner/endpoint,
+including when a disabled sibling's saved address is old.
+
+A learned host-property update does not restart the already-verified worker that
+published it. Genuine binding changes still run the usual stop/start lifecycle.
+On concurrent-thread retry, stopped-ID hints are rebuilt from current IOM enabled
+states so a lost callback cannot leave an enabled device permanently paused.
 
 ## Ordered reconciliation
 
@@ -115,7 +139,13 @@ makes loss visible; it cannot guarantee physical event delivery during overload.
 Per-device password overrides are keyed by physical ID in Indigo preferences. A
 blank override means no password. The legacy shared credential applies only to
 existing bindings or explicit hosts. A new unassigned Bonjour responder receives
-no shared credential. The password menu provides explicit per-device setup.
+no shared credential. Masked fields in all three device dialogs and the password menu provide explicit
+per-device setup. Device-dialog edits are staged in a bounded in-memory store and
+committed by the dialog's Save notification; validation removes plaintext from
+saved device properties. Blank keeps the existing password; the explicit No password
+choice clears it. Cancel discards the edit. A password save does not resume a paused
+unit. The old shared-password preference field is removed; stored legacy fallback
+remains for compatibility.
 
 Digest challenges must match the checked identity; authenticated sessions reuse
 nonces with increasing counters. Passwords and challenges are not logged. Remote

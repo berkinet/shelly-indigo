@@ -1,6 +1,7 @@
 """Connection ownership. Mutated only by the Indigo adapter's event loop."""
 import itertools
 import time
+import threading
 
 
 class Connections:
@@ -39,3 +40,18 @@ class Connections:
                     and (self.owners.get(identity) == host or worker.expected_id == identity)]
         self.owners[identity] = address
         return obsolete
+
+
+class CommunicationPolicy:
+    """Read-only admission snapshot for workers; Indigo objects stay on the owner thread."""
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.disabled = set()
+
+    def replace(self, enabled_by_identity):
+        with self.lock:
+            self.disabled = {identity for identity, enabled in enabled_by_identity.items() if not enabled}
+
+    def permits(self, identity):
+        with self.lock:
+            return identity not in self.disabled

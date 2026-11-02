@@ -14,8 +14,8 @@ import shelly
 sys.path.insert(0, str(Path(shelly.__file__).resolve().parents[2] / "Packages"))
 import indigo
 from shelly.commands import translate
-from shelly.connections import Connections
-from shelly.credentials import Credentials
+from shelly.connections import CommunicationPolicy, Connections
+from shelly.credentials import CredentialEdits, Credentials
 from shelly.diagnostics import Diagnostics
 from shelly.discovery import Discovery
 from shelly.model import Inventory, endpoint
@@ -32,8 +32,11 @@ class Plugin(indigo.PluginBase):
         self.events = queue.Queue(maxsize=1024)
         self.closing = threading.Event()
         self.connections = Connections()
+        self.communication = CommunicationPolicy()
+        self.stopped_devices = set()
         self.workers = self.connections.workers
         self.credentials = Credentials(pluginPrefs.get("password", ""), pluginPrefs.get("devicePasswords", "{}"))
+        self.credential_edits = CredentialEdits()
         self.outages = {}
         self.overflows = set()
         self.pending_probes = {}
@@ -88,8 +91,77 @@ class Plugin(indigo.PluginBase):
         self.credentials.authorize(dev.pluginProps.get("shellyId") for dev in self._devices()
                                    if self._selection_key(dev.pluginProps))
 
-    def _connect(self, address, expected_id=None, exclude_id=None):
+    def _device_communicating(self, dev):
+        return dev.enabled and dev.id not in self.stopped_devices
+
+    def _sync_communication(self):
+        bindings = [dev for dev in self._devices() if self._selection_key(dev.pluginProps)]
+        enabled = {}
+        for dev in bindings:
+            identity = dev.pluginProps["shellyId"]
+            enabled[identity] = enabled.get(identity, False) or self._device_communicating(dev)
+        self.communication.replace(enabled)
+        return bindings
+
+    def _communication_bindings(self, address, identity=None, bindings=None):
+        bindings = self._sync_communication() if bindings is None else bindings
+        return [dev for dev in bindings if (dev.pluginProps["shellyId"] == identity if identity else
+                bool(dev.pluginProps.get("host")) and endpoint(dev.pluginProps["host"]) == address)]
+
+    def _communication_allowed(self, address, identity=None, bindings=None):
+        matches = self._communication_bindings(address, identity, bindings)
+        return not matches or any(self._device_communicating(dev) for dev in matches)
+
+    def _pause(self, address):
+        # Preserve offline selector entries so another channel can be explicitly
+        # added later, while removing the worker and fencing all of its messages.
+        with self.catalog_lock:
+            cached = {key: {**entry, "online": False} for key, entry in self.catalog.items()
+                      if entry["host"] == address}
+        self._retire(address)
+        self.pending_probes.pop(address, None)
+        self.outages.pop(address, None)
+        with self.catalog_lock:
+            self.catalog.update(cached)
+            for entry in self.discovered_devices.values():
+                if entry["host"] == address:
+                    entry["paused"] = True
+        self.logger.debug("Shelly communication stopped at %s: no enabled Indigo channels", address)
+
+    def _cache_paused_identity(self, address, info):
+        with self.catalog_lock:
+            old = self.discovered_devices.get(info["id"], {})
+            name = info.get("name") or old.get("name")
+            self.discovered_devices[info["id"]] = {"id": info["id"], "name": name,
+                "host": address, "online": False, "requiresPassword": False, "paused": True}
+            for key, entry in list(self.catalog.items()):
+                if entry["shellyId"] == info["id"]:
+                    self.catalog[key] = {**entry, "host": address, "online": False,
+                        "label": self._channel_label({"id": info["id"], "name": name}, entry["component"], address)}
+
+    def _suspend_identity(self, address, info):
+        self._pause(address)
+        self._cache_paused_identity(address, info)
+
+    def _connect(self, address, expected_id=None, exclude_id=None, hint_id=None):
         address = endpoint(address)
+        known = self.info.get(address, {}).get("id")
+        if known is None and address in self.workers:
+            known = self.workers[address].expected_id
+        identity = expected_id or hint_id or known
+        if not self._communication_allowed(address, identity):
+            paused = {host for host, worker in self.workers.items()
+                      if identity and (self.info.get(host, {}).get("id") or worker.expected_id) == identity}
+            owner = self.connections.owners.get(identity)
+            if owner is not None:
+                paused.add(owner)
+            if address in self.workers and (not known or known == identity):
+                paused.add(address)
+            for host in paused:
+                self._pause(host)
+            if hint_id and (not known or known == hint_id):
+                self._cache_paused_identity(address, {"id": hint_id})
+            return
         self.connections.touch(address)
         self._authorize_credentials()
         if address in self.workers:
@@ -110,7 +182,8 @@ class Plugin(indigo.PluginBase):
                 raise BufferError("Indigo event queue is full") from exc
         explicit = {endpoint(host.strip()) for host in self.pluginPrefs.get("hosts", "").split(",") if host.strip()}
         password = lambda identity: self.credentials.password(identity, address in explicit)
-        worker = Worker(address, emit, password, expected_id, exclude_id=exclude_id)
+        worker = Worker(address, emit, password, expected_id, exclude_id=exclude_id,
+                        permitted=self.communication.permits)
         self.workers[address] = worker
         self.logger.debug("Discovered Shelly endpoint %s", address)
         try:
@@ -174,7 +247,12 @@ class Plugin(indigo.PluginBase):
         configured = {endpoint(dev.pluginProps["host"]) for dev in self._devices() if dev.pluginProps.get("host")}
         configured.update(endpoint(host.strip()) for host in self.pluginPrefs.get("hosts", "").split(",") if host.strip())
         cutoff = time.monotonic() - 900
+        bindings = self._sync_communication()
         for address, worker in list(self.workers.items()):
+            identity = self.info.get(address, {}).get("id") or worker.expected_id
+            if not self._communication_allowed(address, identity, bindings):
+                self._pause(address)
+                continue
             if (address not in configured and not worker.online
                     and self.connections.seen.get(address, 0) < cutoff):
                 self.logger.debug("Retiring stale unassigned Shelly endpoint %s", address)
@@ -201,8 +279,12 @@ class Plugin(indigo.PluginBase):
                 dev.setErrorStateOnServer(None)
             else:
                 dev.setErrorStateOnServer("Connecting")
-            self._emit("discover", address, dev.pluginProps.get("shellyId"))
-            self._emit("refresh", address)
+            self._emit("start_device", address, (dev.id, dev.pluginProps.get("shellyId")))
+
+    def deviceStopComm(self, dev):
+        address = dev.pluginProps.get("host")
+        if address:
+            self._emit("stop_device", endpoint(address), (dev.id, dev.pluginProps.get("shellyId")))
 
     def runConcurrentThread(self):
         discovery = None
@@ -210,9 +292,10 @@ class Plugin(indigo.PluginBase):
             # Indigo retries this method on the same object after an unexpected exit.
             self.closing = threading.Event()
             self.events = queue.Queue(maxsize=1024)
+            self.stopped_devices.clear()
         try:
             for dev in self._devices():
-                if dev.enabled and dev.pluginProps.get("host") and self._selection_key(dev.pluginProps):
+                if self._device_communicating(dev) and dev.pluginProps.get("host") and self._selection_key(dev.pluginProps):
                     self._connect(dev.pluginProps["host"], dev.pluginProps["shellyId"])
             for address in self.pluginPrefs.get("hosts", "").split(","):
                 if address.strip():
@@ -220,9 +303,9 @@ class Plugin(indigo.PluginBase):
             if self.pluginPrefs.get("discovery", True):
                 try:
                     closing = self.closing
-                    def found(address):
+                    def found(address, identity=None):
                         if not closing.is_set():
-                            self._emit("discover", address)
+                            self._emit("bonjour", address, identity)
                     discovery = Discovery(found)
                     self.logger.debug("Shelly discovery started (Gen2–Gen4 switches, dimmers and inputs)")
                 except Exception as exc:
@@ -245,7 +328,7 @@ class Plugin(indigo.PluginBase):
                     if worker is not None:
                         worker.join(max(0, deadline - time.monotonic()))
                 for dev in self._devices():
-                    if dev.enabled and self._selection_key(dev.pluginProps):
+                    if self._device_communicating(dev) and self._selection_key(dev.pluginProps):
                         self._channel_unavailable(dev, "Plugin communication stopped")
 
     def _handle(self, kind, address, payload, generation=None):
@@ -253,14 +336,45 @@ class Plugin(indigo.PluginBase):
             return
         if kind == "discover":
             self._connect(address, payload)
+        elif kind == "bonjour":
+            self._connect(address, hint_id=payload)
+        elif kind == "stop_device":
+            dev_id, identity = payload
+            self.stopped_devices.add(dev_id)
+            bindings = self._sync_communication()
+            for host, worker in list(self.workers.items()):
+                occupant = self.info.get(host, {}).get("id") or worker.expected_id
+                if (occupant == identity or (not occupant and host == address)):
+                    matches = self._communication_bindings(host, identity, bindings)
+                    if not any(self._device_communicating(dev) for dev in matches):
+                        self._pause(host)
+        elif kind == "start_device":
+            dev_id, identity = payload
+            self.stopped_devices.discard(dev_id)
+            self._sync_communication()
+            with self.catalog_lock:
+                entry = self.discovered_devices.get(identity, {})
+                host = self.connections.owners.get(identity) or entry.get("host") or address
+            self._connect(host, identity)
+            self._handle("refresh", host, None)
+        elif kind == "suspended":
+            self._suspend_identity(address, payload)
         elif kind == "credentials":
             identity, password = payload
-            with self.catalog_lock:
-                entry = dict(self.discovered_devices[identity])
             self.pluginPrefs["devicePasswords"] = self.credentials.set(identity, password)
-            self._retire(entry["host"])
-            self.logger.info("Updated local credentials for %s; querying again", identity)
-            self._connect(entry["host"], identity)
+            with self.catalog_lock:
+                entry = dict(self.discovered_devices.get(identity, {}))
+            host = entry.get("host") or self.connections.owners.get(identity)
+            if not host:
+                matches = self._communication_bindings("", identity)
+                host = next((dev.pluginProps.get("host") for dev in matches if dev.pluginProps.get("host")), None)
+            if host and self._communication_allowed(endpoint(host), identity):
+                host = endpoint(host)
+                self._retire(host)
+                self.logger.info("Updated local credentials for %s; querying again", identity)
+                self._connect(host, identity)
+            else:
+                self.logger.info("Updated local credentials for %s; communication remains disabled or no endpoint is known", identity)
         elif kind == "create_devices":
             created = 0
             kinds = set()
@@ -296,7 +410,7 @@ class Plugin(indigo.PluginBase):
         elif kind == "command":
             dev_id, action, *values = payload
             dev = indigo.devices[dev_id]
-            if not dev.enabled or self._block_invalid_binding(dev):
+            if not self._device_communicating(dev) or self._block_invalid_binding(dev):
                 return
             if dev.deviceTypeId not in ("shellySwitch", "shellyDimmer"):
                 return
@@ -313,6 +427,9 @@ class Plugin(indigo.PluginBase):
             if worker is not None and worker.online:
                 worker.command("Shelly.GetStatus", {})
         elif kind == "identified":
+            if not self._communication_allowed(address, payload["id"]):
+                self._suspend_identity(address, payload)
+                return
             with self.catalog_lock:
                 old = self.discovered_devices.get(payload["id"], {})
                 if not old.get("online") or old.get("host") == address:
@@ -335,6 +452,9 @@ class Plugin(indigo.PluginBase):
                     entry.update(online=True, requiresPassword=True)
         elif kind == "ready":
             info, status = payload
+            if not self._communication_allowed(address, info["id"]):
+                self._suspend_identity(address, info)
+                return
             obsolete = set(self.connections.claim(info["id"], address))
             obsolete.update(host for host, item in self.info.items() if host != address and item["id"] == info["id"])
             for old_address in obsolete:
@@ -379,6 +499,12 @@ class Plugin(indigo.PluginBase):
                         self._fire_button_pressed(address, channel, event)
             self._report_components(address, {})
         elif kind == "offline":
+            identity = self.info.get(address, {}).get("id")
+            if identity is None and address in self.workers:
+                identity = self.workers[address].expected_id
+            if not self._communication_allowed(address, identity):
+                self._pause(address)
+                return
             if address in self.inventory:
                 self.inventory[address].invalidate_buttons()
             with self.catalog_lock:
@@ -389,12 +515,16 @@ class Plugin(indigo.PluginBase):
                     if entry["host"] == address:
                         self.catalog[key] = {**entry, "online": False}
             if self.outages.get(address) != payload:
-                self.logger.warning("Shelly %s unavailable: %s", address, payload)
+                matches = self._communication_bindings(address, identity)
+                active = ", ".join(f"{dev.name} (Indigo {dev.id})" for dev in matches
+                                   if self._device_communicating(dev))
+                context = f"; active Indigo devices: {active}" if active else ""
+                self.logger.warning("Shelly %s unavailable%s: %s", address, context, payload)
                 self.outages[address] = payload
             else:
                 self.logger.debug("Shelly %s still unavailable: %s", address, payload)
             for dev in self._devices():
-                if dev.enabled and dev.pluginProps.get("host") == address:
+                if self._device_communicating(dev) and dev.pluginProps.get("host") == address:
                     if self._block_invalid_binding(dev):
                         continue
                     dev.updateStateOnServer("online", False)
@@ -428,7 +558,7 @@ class Plugin(indigo.PluginBase):
             channels, removed = self.inventory[address].replace(status)
             identity = self.info[address]["id"]
             for dev in self._devices():
-                if (dev.enabled and dev.pluginProps.get("shellyId") == identity
+                if (self._device_communicating(dev) and dev.pluginProps.get("shellyId") == identity
                         and dev.pluginProps.get("component") in removed):
                     self._channel_unavailable(dev, "Channel unavailable")
             with self.catalog_lock:
@@ -488,7 +618,7 @@ class Plugin(indigo.PluginBase):
                 devices[key] = dev
                 created += 1
                 self.logger.info("Created %s", dev.name)
-            if not dev.enabled or self._block_invalid_binding(dev):
+            if not self._device_communicating(dev) or self._block_invalid_binding(dev):
                 continue
             if dev.pluginProps.get("host") != address:
                 props = dict(dev.pluginProps)
@@ -573,7 +703,7 @@ class Plugin(indigo.PluginBase):
             if str(trigger.pluginProps.get("inputDeviceId")) != str(device_id):
                 continue
             dev = self._button_input(device_id)
-            if (dev is None or not dev.enabled or dev.pluginProps.get("shellyId") != identity
+            if (dev is None or not self._device_communicating(dev) or dev.pluginProps.get("shellyId") != identity
                     or dev.pluginProps.get("component") != channel.key):
                 continue
             data = indigo.Dict({"source": "com.berkinet.indigoplugin.shelly",
@@ -714,6 +844,9 @@ class Plugin(indigo.PluginBase):
 
     def getDeviceConfigUiValues(self, pluginProps, typeId, devId):
         values = indigo.Dict(pluginProps)
+        values["devicePassword"] = ""
+        values["clearDevicePassword"] = False
+        values["credentialEditToken"] = ""
         if self._expected_device_type(pluginProps) == typeId:
             values["selectedChannel"] = self._selection_key(pluginProps) or NO_CHANNEL
         else:
@@ -767,7 +900,36 @@ class Plugin(indigo.PluginBase):
         if message:
             return False, valuesDict, indigo.Dict({"selectedChannel": message, "showAlertText": message})
         valuesDict = self._fill_channel_selection(valuesDict, selection, choices[selection])
+        try:
+            token = self.credential_edits.stage(valuesDict["shellyId"], valuesDict.get("devicePassword", ""),
+                                                valuesDict.get("clearDevicePassword", False),
+                                                valuesDict.get("credentialEditToken", ""))
+        except ValueError as exc:
+            return False, valuesDict, indigo.Dict({"devicePassword": str(exc), "showAlertText": str(exc)})
+        valuesDict["credentialEditToken"] = token
+        valuesDict["devicePassword"] = ""
+        valuesDict["clearDevicePassword"] = False
         return True, valuesDict
+
+    def closedDeviceConfigUi(self, valuesDict, userCancelled, typeId, devId):
+        edit = self.credential_edits.finish(valuesDict.get("credentialEditToken", ""), userCancelled)
+        if edit is not None and edit[0] == valuesDict.get("shellyId"):
+            self._emit("credentials", "", edit)
+
+    def didDeviceCommPropertyChange(self, origDev, newDev):
+        # Password edits reconnect through their saved-credential event. UI-only
+        # fields must not restart a shared worker. A learned DHCP address update
+        # already has the verified worker that published that property change.
+        if origDev.deviceTypeId != newDev.deviceTypeId or any(
+                origDev.pluginProps.get(key) != newDev.pluginProps.get(key) for key in ("shellyId", "component")):
+            return True
+        if origDev.pluginProps.get("host") != newDev.pluginProps.get("host"):
+            try:
+                host = endpoint(newDev.pluginProps.get("host", ""))
+            except (ValueError, AttributeError):
+                return True
+            return self.connections.owners.get(newDev.pluginProps.get("shellyId")) != host
+        return False
 
     def actionControlDevice(self, action, dev):
         actions = {indigo.kDeviceAction.TurnOn: "on", indigo.kDeviceAction.TurnOff: "off",
@@ -781,6 +943,8 @@ class Plugin(indigo.PluginBase):
             self._emit("command", "", (dev.id, command[action.deviceAction], action.actionValue))
 
     def actionControlUniversal(self, action, dev):
+        if not self._device_communicating(dev):
+            return
         if action.deviceAction in (indigo.kUniversalAction.RequestStatus, indigo.kUniversalAction.EnergyUpdate):
             self._emit("refresh", dev.pluginProps["host"])
         else:

@@ -132,6 +132,26 @@ class IntegrationTests(unittest.TestCase):
             self.assertFalse(host.plugin.discovered_devices['shelly-simulator']['requiresPassword'])
             self.assertTrue(any('auth' in item[1] for item in list(sim.server.requests.queue)))
 
+    def test_disabling_all_channels_stops_real_worker_and_rediscovery_then_reenable_resumes(self):
+        with LocalShelly(button=True) as sim, RunningPlugin(sim.endpoint) as host:
+            host.create(includeSwitches=True, includeInputs=True)
+            wait_for(lambda: len(host.host.devices) == 2)
+            for dev in list(host.host.devices.values()):
+                dev.enabled = False
+                host.plugin.deviceStopComm(dev)
+            wait_for(lambda: sim.endpoint not in host.plugin.workers)
+            count = sim.server.methods.qsize()
+            host.plugin._emit('bonjour', sim.endpoint, 'shelly-simulator')
+            host.plugin._emit('discover', sim.endpoint)
+            time.sleep(.08)
+            self.assertEqual(sim.server.methods.qsize(), count)
+            relay = next(dev for dev in host.host.devices.values() if dev.deviceTypeId == 'shellySwitch')
+            relay.enabled = True
+            host.plugin.deviceStartComm(relay)
+            wait_for(lambda: sim.endpoint in host.plugin.workers and host.plugin.workers[sim.endpoint].online)
+            host.action(relay, 'TurnOn')
+            wait_for(lambda: relay.states['onOffState'])
+
 
 class TransportIntegrationTests(unittest.TestCase):
     def worker(self, sim, **options):
@@ -229,6 +249,20 @@ class TransportIntegrationTests(unittest.TestCase):
             try:
                 next_event(events, lambda e: e[0] == 'alias')
                 self.assertEqual(list(sim.server.methods.queue), ['Shelly.GetDeviceInfo'])
+            finally:
+                worker.stop()
+                worker.join(3)
+
+    def test_disabled_identity_at_new_endpoint_is_stopped_before_protected_rpc(self):
+        from shelly.connections import CommunicationPolicy
+        policy = CommunicationPolicy()
+        policy.replace({'shelly-simulator': False})
+        with LocalShelly(password='secret') as sim:
+            worker, events = self.worker(sim, password='secret', permitted=policy.permits)
+            try:
+                next_event(events, lambda event: event[0] == 'suspended')
+                self.assertEqual(list(sim.server.methods.queue), ['Shelly.GetDeviceInfo'])
+                self.assertFalse(worker.online)
             finally:
                 worker.stop()
                 worker.join(3)

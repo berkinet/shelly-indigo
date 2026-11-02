@@ -16,6 +16,17 @@
       <Field id="channelHelp" type="label">
         <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
+      <Field id="devicePassword" type="textfield" secure="true" defaultValue="">
+        <Label>Local device password:</Label>
+      </Field>
+      <Field id="clearDevicePassword" type="checkbox" defaultValue="false">
+        <Label>No password:</Label>
+        <Description>Remove the saved password for this physical Shelly</Description>
+      </Field>
+      <Field id="passwordHelp" type="label">
+        <Label>Leave the password blank to keep the saved credential. A change applies to all channels on this physical Shelly. This is its local admin password, not your cloud login; it does not change the password on the Shelly.</Label>
+      </Field>
+      <Field id="credentialEditToken" type="textfield" hidden="true" defaultValue="" />
       <Field id="shellyId" type="textfield" readonly="true">
         <Label>Shelly ID:</Label>
       </Field>
@@ -79,6 +90,17 @@
       <Field id="channelHelp" type="label">
         <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
+      <Field id="devicePassword" type="textfield" secure="true" defaultValue="">
+        <Label>Local device password:</Label>
+      </Field>
+      <Field id="clearDevicePassword" type="checkbox" defaultValue="false">
+        <Label>No password:</Label>
+        <Description>Remove the saved password for this physical Shelly</Description>
+      </Field>
+      <Field id="passwordHelp" type="label">
+        <Label>Leave the password blank to keep the saved credential. A change applies to all channels on this physical Shelly. This is its local admin password, not your cloud login; it does not change the password on the Shelly.</Label>
+      </Field>
+      <Field id="credentialEditToken" type="textfield" hidden="true" defaultValue="" />
       <Field id="shellyId" type="textfield" readonly="true">
         <Label>Shelly ID:</Label>
       </Field>
@@ -142,6 +164,17 @@
       <Field id="channelHelp" type="label">
         <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
+      <Field id="devicePassword" type="textfield" secure="true" defaultValue="">
+        <Label>Local device password:</Label>
+      </Field>
+      <Field id="clearDevicePassword" type="checkbox" defaultValue="false">
+        <Label>No password:</Label>
+        <Description>Remove the saved password for this physical Shelly</Description>
+      </Field>
+      <Field id="passwordHelp" type="label">
+        <Label>Leave the password blank to keep the saved credential. A change applies to all channels on this physical Shelly. This is its local admin password, not your cloud login; it does not change the password on the Shelly.</Label>
+      </Field>
+      <Field id="credentialEditToken" type="textfield" hidden="true" defaultValue="" />
       <Field id="shellyId" type="textfield" readonly="true">
         <Label>Shelly ID:</Label>
       </Field>

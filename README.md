@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.0 beta
+# Shelly for Indigo — 0.2.1 beta
 
 Independent, local Shelly integration for Indigo using RPC over WebSockets.
 Discovery runs continuously; creating Indigo devices is an explicit action.
@@ -48,16 +48,23 @@ behavior or dimmer calibration. Provision a new unit onto the network first.
 
 ## Passwords
 
-Unprotected devices need no password. For protected devices choose
-**Plugins → Shelly → Set Device Password…**, select the physical unit and enter its
-**local admin password**. This is not the Shelly cloud account password. The setting
-applies to every channel on that unit and does not change its hardware password.
-Saving a blank password explicitly selects no authentication for that unit.
+Unprotected devices need no password. Each **Shelly Switch**, **Shelly Dimmer** and
+**Shelly Input** device configuration has a masked **Local device password** field.
+Enter the local admin password and Save. Leaving it blank keeps the saved credential;
+select **No password** to remove it. Cancel leaves credentials unchanged.
 
-Passwords are masked in the menu and stored in Indigo preferences, not encrypted
-by this plugin. They are never included in diagnostic logs or release files.
-An existing legacy shared password remains a fallback for saved Indigo bindings
-and explicitly entered hosts. Newly discovered, unassigned units never receive
+A password change applies to all channels on that physical Shelly and does not
+change its hardware password. It is not the Shelly cloud account password.
+For a protected unit that has no Indigo channels yet, use
+**Plugins → Shelly → Set Device Password…** first, then create its channels.
+That menu also remains available for physical-device password management; a blank
+password in that menu explicitly selects no authentication.
+
+Passwords are masked and stored centrally in Indigo preferences, not encrypted
+by this plugin. Typed device-dialog passwords are kept out of saved device properties
+and applied only after Save. They are never included in diagnostic logs or release files.
+An already-stored legacy shared password remains a fallback for saved Indigo
+bindings and explicitly entered hosts; its old field is no longer in plugin preferences. Newly discovered, unassigned units never receive
 that shared credential automatically. A protected discovery remains visible with
 a password-required label until its credential is configured.
 
@@ -117,8 +124,21 @@ step or reconnection.
 The Event Log preference offers **Info** and **Debug** and applies immediately.
 Discovery, queries and detailed inventory summaries use Debug; warnings and errors
 remain visible at both levels. The plugin file log retains Debug diagnostics.
-Restart after changing discovery, additional-host or legacy-password preferences.
-Per-device password changes reconnect that unit immediately.
+Restart after changing discovery or additional-host preferences.
+Per-device password changes reconnect that unit when communication is enabled;
+saving a password never enables disabled communications.
+
+Disabling **communication** on an Indigo channel stops its updates, controls and
+triggers. When the last enabled channel on a physical Shelly is disabled, its worker
+is stopped and retries/warnings cease. Bonjour still browses for other units; it
+cannot restart that disabled-only unit, even if its address is in Additional hosts.
+If another channel on the same unit remains enabled, the shared connection stays
+active and outage warnings name the active Indigo channels.
+
+Offline channel choices are retained. Re-enabling a channel resumes communication,
+using its current discovered endpoint when available. An unidentified endpoint may
+need one public identity read to recognize a disabled unit; that read does not
+proceed to authentication, polling or controls for it.
 
 Physical identities survive DHCP changes. Old connection messages are fenced by
 connection generation. Vacated endpoints are probed for replacement units without
@@ -161,7 +181,7 @@ builds a fresh archive and publishes a beta prerelease with a source-commit and
 SHA-256 manifest. Existing release assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.0-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.1-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 

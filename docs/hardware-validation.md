@@ -1,6 +1,6 @@
 # Hardware validation
 
-## Current status — 0.2.0 beta preparation, 2 November 2026
+## Current status — 0.2.1 beta preparation, 2 November 2026
 
 The beta has not been installed or enabled in the owner's live Indigo server by
 this development session. No physical output or hardware setting was changed.
@@ -16,7 +16,8 @@ to a repeatable beta validation result.
 | Gen4 input press/release and startup position | Owner reported working behavior; earlier RPC/Modbus reads | Repeat held/released restart checks on the installed beta |
 | Native Button Pressed trigger | Owner reported trigger-based toggling; simulator verifies native event adapter | Check beta native event, conditions, single press and clock/network recovery |
 | Gen3 dimmer and existing Gen2 Pro dimmer | Earlier read-only state/metering translation | Physical On/Off/Toggle, relative steps, external changes and meter comparison |
-| Per-device passwords | Strict authenticated simulator; identity and realm rejection tests | Protected-device menu, persistence and successful native operation |
+| Per-device passwords | Strict authenticated simulator; Save/Cancel, blank/clear and offline-device configuration regressions | Masked fields in all three native dialogs, persistence and protected-device operation |
+| Communication checkbox | Owner reported an offline disabled device still warning on 0.2.0; reproduced and covered with shared-worker and real loopback stop/resume tests | Disable last channel, confirm retries stop; re-enable; confirm enabled siblings retain communication |
 | Native dialogs | XML contract validation and host double | Open each device type, confirm read-only details, refresh and save; password menu |
 | DHCP/address reuse and communication failure | Deterministic registry and real loopback transport tests | Router/network interruption and reconnect with actual units |
 | Release installation | Isolated source/archive loader checks and portable dependency integrity | Install archive in Indigo and confirm existing names, IDs and bindings remain |

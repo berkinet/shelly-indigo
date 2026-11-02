@@ -18,7 +18,7 @@ def main():
     parser.add_argument('--read-status', action='store_true', help='Also read device identity and status')
     args = parser.parse_args()
     addresses = queue.Queue()
-    browser = Discovery(addresses.put)
+    browser = Discovery(lambda address, _identity=None: addresses.put(address))
     try:
         time.sleep(args.seconds)
     finally:
@@ -50,8 +50,9 @@ def main():
                 components = ', '.join(sorted(key for key in status if ':' in key))
                 print(f'{address}: Gen{info["gen"]} {info.get("model", "")} [{components}]', flush=True)
                 pending.remove(address)
-            elif kind == 'offline':
-                print(f'{address}: unavailable ({payload})', flush=True)
+            elif kind in ('offline', 'auth_required'):
+                reason = payload['reason'] if isinstance(payload, dict) else payload
+                print(f'{address}: unavailable ({reason})', flush=True)
                 pending.remove(address)
     finally:
         for worker in workers:
