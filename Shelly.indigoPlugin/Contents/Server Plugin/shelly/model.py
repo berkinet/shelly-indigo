@@ -49,6 +49,7 @@ class Channel:
                 state = None
             result["inputMode"] = "button" if button else "switch" if isinstance(state, bool) else "unknown"
             result["stateKnown"] = isinstance(state, bool)
+            result["inputStatus"] = "On" if state is True else "Off" if state is False else "Unknown"
             if result["stateKnown"]:
                 result["onOffState"] = state
         elif isinstance(source.get("output"), bool):
@@ -85,6 +86,8 @@ class Inventory:
                     channel.values[name] = {**channel.values[name], **value}
                 else:
                     channel.values[name] = value
+            if isinstance(values.get("_buttonState"), bool):
+                channel.button_state = values["_buttonState"]
             changed.append(channel)
         return changed
 

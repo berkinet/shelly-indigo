@@ -69,7 +69,16 @@ class Plugin(indigo.PluginBase):
             dev.stateListOrDisplayStateIdChanged()
             if self._block_invalid_binding(dev):
                 return
-            dev.setErrorStateOnServer("Connecting")
+            if dev.deviceTypeId == "shellyInput":
+                dev.updateStatesOnServer([{"key": "online", "value": False},
+                                         {"key": "stateKnown", "value": False},
+                                         {"key": "inputStatus", "value": "Connecting"}])
+                dev.updateStateOnServer("onOffState", dev.states["onOffState"],
+                                        uiValue="Connecting", triggerEvents=False)
+                dev.updateStateImageOnServer(indigo.kStateImageSel.SensorOff)
+                dev.setErrorStateOnServer(None)
+            else:
+                dev.setErrorStateOnServer("Connecting")
             self._emit("discover", address, dev.pluginProps.get("shellyId"))
             self._emit("refresh", address)
 
@@ -196,6 +205,7 @@ class Plugin(indigo.PluginBase):
                     dev.updateStateOnServer("online", False)
                     if dev.deviceTypeId == "shellyInput":
                         dev.updateStateOnServer("stateKnown", False)
+                        dev.updateStateOnServer("inputStatus", "Offline")
                     dev.setErrorStateOnServer("Offline")
         elif kind == "command_error":
             self.logger.error("Shelly %s: %s", address, payload)
@@ -248,7 +258,7 @@ class Plugin(indigo.PluginBase):
             states = channel.states()
             # Inputs do not expose metering fields in Devices.xml.
             if channel.kind == "input":
-                states = {k: v for k, v in states.items() if k in ("onOffState", "stateKnown", "inputMode")}
+                states = {k: v for k, v in states.items() if k in ("onOffState", "stateKnown", "inputMode", "inputStatus")}
             states["online"] = True
             if any(key not in dev.states for key in states):
                 dev.stateListOrDisplayStateIdChanged()
@@ -257,8 +267,15 @@ class Plugin(indigo.PluginBase):
                     dev.setErrorStateOnServer("State definitions unavailable; restart the Shelly plugin")
                     continue
             dev.updateStatesOnServer([{"key": k, "value": v} for k, v in states.items()])
-            unknown = channel.kind == "input" and not states.get("stateKnown", False)
-            dev.setErrorStateOnServer("Waiting for input press/release" if unknown else None)
+            if channel.kind == "input":
+                # Retain the last raw binary value when unknown, but make the
+                # built-in sensor display truthful without emitting a fake edge.
+                value = states.get("onOffState", dev.states["onOffState"])
+                dev.updateStateOnServer("onOffState", value, uiValue=states["inputStatus"], triggerEvents=False)
+                image = (indigo.kStateImageSel.SensorOn if states.get("stateKnown")
+                         and states.get("onOffState") else indigo.kStateImageSel.SensorOff)
+                dev.updateStateImageOnServer(image)
+            dev.setErrorStateOnServer(None)
         return created
 
     @staticmethod

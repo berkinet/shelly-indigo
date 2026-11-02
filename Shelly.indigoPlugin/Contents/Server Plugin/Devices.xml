@@ -114,6 +114,12 @@
         <TriggerLabel>Input mode</TriggerLabel>
         <ControlPageLabel>Input mode</ControlPageLabel>
       </State>
+      <State id="inputStatus">
+        <ValueType>String</ValueType>
+        <TriggerLabel>Input status</TriggerLabel>
+        <ControlPageLabel>Input status</ControlPageLabel>
+      </State>
     </States>
+    <UiDisplayStateId>inputStatus</UiDisplayStateId>
   </Device>
 </Devices>

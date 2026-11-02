@@ -32,10 +32,16 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   devices. Switch metering is exposed where present. Unsupported components are
   ignored. Button channels are identified with read-only Input.GetConfig calls
   and track btn_down/btn_up independently of relay state.
-- Button state is unknown until an event establishes it after startup/reconnect.
-  Null status polls preserve known held/released state. Event order is preserved
+- Binary RPC input states initialize immediately. Gen4 non-inverted button inputs
+  can also initialize from an identity-verified read through already-enabled
+  Modbus, using only read functions and a bounded timeout. Unsupported/failed
+  optional reads fall back to events; no missing sample becomes an assumed OFF.
+- Unknown input position is a normal neutral state, separate from device errors.
+  Input display uses inputStatus; stateKnown gates the retained raw onOffState.
+- Null RPC polls preserve known held/released state. Event order is preserved
   for quick transitions in one frame, and older timestamped events are ignored.
-  Connection-setup notifications are buffered until identity/inventory is ready.
+  Connection-setup notifications are buffered until identity/inventory is ready;
+  a later Modbus sample supersedes earlier buffered button events.
 - Notifications are partial updates. Missing fields preserve known values.
 - Indigo calls and discovery reconciliation happen in the concurrent plugin
   thread; actions and network workers communicate with it through an event queue.
@@ -78,3 +84,6 @@ of building or publishing it. Record hardware testing status honestly.
 
 - https://docs.indigodomo.com/2025.2/plugin-dev/reference/xml/menuitems/
 - https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys/
+
+- https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input/
+- https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Modbus/

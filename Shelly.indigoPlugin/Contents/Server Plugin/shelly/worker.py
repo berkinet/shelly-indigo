@@ -3,6 +3,8 @@ import queue
 import re
 import threading
 import time
+from urllib.parse import urlsplit
+from .modbus import read_button_inputs
 from .rpc import AuthenticationError, RpcError, Session
 
 
@@ -59,6 +61,7 @@ class Worker(threading.Thread):
                     if self.online:
                         self.emit("identity", self.address, dict(self.device_info))
         status = session.call("Shelly.GetStatus")
+        readable_buttons = []
         for key, values in status.items():
             if (not re.fullmatch(r"input:\d+", key) or not isinstance(values, dict)
                     or isinstance(values.get("state"), bool)):
@@ -66,6 +69,26 @@ class Worker(threading.Thread):
             config = session.call("Input.GetConfig", {"id": int(key.split(":")[1])})
             values["_inputType"] = config.get("type")
             values["_enabled"] = config.get("enable", True)
+            # Inverted input semantics are left to RPC events until verified.
+            if (config.get("type") == "button" and config.get("enable", True)
+                    and not config.get("invert", False)):
+                readable_buttons.append(int(key.split(":")[1]))
+        info = self.device_info or {}
+        endpoint = urlsplit("//" + self.address)
+        if (readable_buttons and info.get("gen") == 4 and info.get("mac")
+                and endpoint.port == 80):
+            try:
+                enabled = session.call("Modbus.GetConfig").get("enable", False)
+                if enabled:
+                    sampled = read_button_inputs(endpoint.hostname, info["mac"], readable_buttons)
+                    for index, state in sampled.items():
+                        status[f"input:{index}"]["_buttonState"] = state
+            except AuthenticationError:
+                raise
+            except (RpcError, OSError, ValueError):
+                # Optional read failure never fabricates OFF or makes a working
+                # WebSocket input unavailable; events remain the fallback.
+                pass
         return status
 
     def run(self):
@@ -92,7 +115,15 @@ class Worker(threading.Thread):
                 with self.command_lock:
                     self.online = True
                 self.emit("ready", self.address, (info, status))
+                sampled = {key for key, values in status.items() if isinstance(values, dict)
+                           and isinstance(values.get("_buttonState"), bool)}
                 for kind, params in self.pending_notifications:
+                    if kind == "event" and sampled:
+                        # These buffered events precede the initial physical sample.
+                        params = {**params, "events": [event for event in params.get("events", [])
+                                  if event.get("component") not in sampled]}
+                        if not params["events"]:
+                            continue
                     self.emit(kind, self.address, params)
                 self.pending_notifications.clear()
                 delay = 1

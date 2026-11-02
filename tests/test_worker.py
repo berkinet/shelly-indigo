@@ -91,3 +91,39 @@ class WorkerTests(unittest.TestCase):
         session.call.side_effect = [RpcError('unsupported'), {'switch:0': {'output': True}}]
         self.assertTrue(worker._read_status(session)['switch:0']['output'])
         self.assertNotIn('name', worker.device_info)
+
+    def test_gen4_modbus_initializes_both_positions_without_enabling_anything(self):
+        from shelly.model import Inventory
+        for held in (False, True):
+            with self.subTest(held=held):
+                worker = Worker('192.0.2.1:80', lambda *args: None)
+                worker.device_info = {'id': 'unit', 'gen': 4, 'mac': 'E4B06365AF10'}
+                session = Mock()
+                session.call.side_effect = [{'device': {'name': None}},
+                    {'input:0': {'state': None}}, {'type': 'button', 'enable': True, 'invert': False},
+                    {'enable': True}]
+                with patch('shelly.worker.read_button_inputs', return_value={0: held}) as read:
+                    status = worker._read_status(session)
+                read.assert_called_once_with('192.0.2.1', 'E4B06365AF10', [0])
+                channel, = Inventory().merge(status)
+                self.assertTrue(channel.states()['stateKnown'])
+                self.assertIs(channel.states()['onOffState'], held)
+                self.assertEqual(channel.states()['inputStatus'], 'On' if held else 'Off')
+                self.assertTrue(all('Get' in call.args[0] for call in session.call.call_args_list))
+
+    def test_optional_modbus_disabled_or_unreachable_keeps_unknown_not_off(self):
+        from shelly.model import Inventory
+        for enabled in (False, True):
+            with self.subTest(enabled=enabled):
+                worker = Worker('192.0.2.1:80', lambda *args: None)
+                worker.device_info = {'id': 'unit', 'gen': 4, 'mac': 'E4B06365AF10'}
+                session = Mock()
+                session.call.side_effect = [{'device': {'name': None}}, {'input:0': {'state': None}},
+                    {'type': 'button', 'enable': True}, {'enable': enabled}]
+                with patch('shelly.worker.read_button_inputs', side_effect=TimeoutError) as read:
+                    status = worker._read_status(session)
+                self.assertEqual(read.call_count, int(enabled))
+                channel, = Inventory().merge(status)
+                self.assertFalse(channel.states()['stateKnown'])
+                self.assertEqual(channel.states()['inputStatus'], 'Unknown')
+                self.assertNotIn('onOffState', channel.states())

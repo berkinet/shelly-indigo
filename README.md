@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.7 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.7-alpha.1/Shelly-0.1.7.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.8 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.8-alpha.1/Shelly-0.1.8.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -123,16 +123,30 @@ which may stay ON after the button is released, depending on Shelly settings.
 The plugin does not change those settings or send relay commands when tracking
 button presses.
 
-Shelly button mode reports `state: null` when polled. The plugin reads the input
-configuration to discover these channels and tracks press/release notifications.
-Polling does not reset a held button. After startup or a disconnect, the input
-state is unknown until a press or release arrives; Indigo shows **Waiting for
-input press/release**, and the `stateKnown` state is false. No guessed release or
-fixed-duration pulse is generated. Button state depends on receiving both event
-transitions; polling cannot reconstruct a missed button transition.
+Shelly button mode reports `state: null` through the regular RPC status call.
+For Gen4 devices with Modbus already enabled, the plugin can also sample the
+physical input at startup/reconnect and during reconciliation. It verifies the
+Modbus device MAC against RPC identity before using the reading. This optional
+path currently covers non-inverted button inputs at the standard RPC endpoint
+(port 80) with reachable Modbus port 502. It never enables Modbus, changes device
+configuration or sends write commands.
+
+A readable binary RPC state or verified Modbus bit establishes ON/OFF immediately.
+Otherwise, the input displays **Unknown** with a neutral icon and `stateKnown`
+false until a press or release arrives. Unknown position is not a disabled device
+or a communication error. No assumed OFF state or fabricated release timer is
+used. Real connection failures still appear as errors. Normal RPC null polls
+preserve a known press/release state.
+
+The `inputStatus` display reports On, Off, Unknown or Connecting. Automations
+using the raw `onOffState` should also check `stateKnown` when startup or missing
+readings matter: the last raw binary value is retained while unknown, with no
+fake state-change event. Gen2/Gen3, inverted inputs, disabled/unreachable Modbus
+and failed identity verification use the event-based fallback.
 
 See [Shelly's Input API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input/)
-for the button notification and status semantics.
+and [Modbus API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Modbus/)
+for the status and input-register semantics.
 
 ## Troubleshooting discovery
 
@@ -167,7 +181,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.7.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.8.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run

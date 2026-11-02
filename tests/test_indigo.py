@@ -17,14 +17,17 @@ class Device:
         self.states = {}
         self.stateListOrDisplayStateIdChanged()
         self.history = []
+        self.ui_values = {}
         self.error = None
     def updateStatesOnServer(self, states):
         assert all(state['key'] in self.states for state in states), 'Undefined Indigo state update'
         self.history.append({state['key']: state['value'] for state in states})
         self.states.update({state['key']: state['value'] for state in states})
-    def updateStateOnServer(self, key, value):
+    def updateStateOnServer(self, key, value, **kwargs):
         assert key in self.states, f'Undefined Indigo state: {key}'
         self.states[key] = value
+        if 'uiValue' in kwargs:
+            self.ui_values[key] = kwargs['uiValue']
     def stateListOrDisplayStateIdChanged(self):
         from pathlib import Path
         from xml.etree import ElementTree
@@ -34,6 +37,8 @@ class Device:
         registered = {state.get('id'): defaults[state.findtext('ValueType')] for state in definition}
         registered['onOffState'] = False
         self.states = {key: self.states.get(key, default) for key, default in registered.items()}
+    def updateStateImageOnServer(self, image):
+        self.image = image
     def setErrorStateOnServer(self, error):
         self.error = error
     def replacePluginPropsOnServer(self, props):
@@ -60,7 +65,8 @@ class IndigoTests(unittest.TestCase):
         self.devices = Devices()
         module = types.SimpleNamespace(PluginBase=Base, devices=self.devices,
                  device=types.SimpleNamespace(create=self.devices.create),
-                 kProtocol=types.SimpleNamespace(Plugin='plugin'), Dict=dict)
+                 kProtocol=types.SimpleNamespace(Plugin='plugin'), Dict=dict,
+                 kStateImageSel=types.SimpleNamespace(SensorOff='neutral', SensorOn='on'))
         self.patcher = patch.dict(sys.modules, indigo=module)
         self.patcher.start()
         sys.modules.pop('plugin', None)
@@ -245,7 +251,9 @@ class IndigoTests(unittest.TestCase):
         self.plugin._handle('ready', self.address, (self.info, status))
         button = self.devices[2]
         self.assertFalse(button.states['stateKnown'])
-        self.assertIn('Waiting', button.error)
+        self.assertIsNone(button.error)
+        self.assertEqual(button.states['inputStatus'], 'Unknown')
+        self.assertEqual(button.image, 'neutral')
         self.assertIn('shelly-unit/input:0', dict(self.plugin.getShellyChannels(typeId='shellyInput')))
         self.plugin._handle('event', self.address, {'events': [
             {'component': 'input:0', 'event': 'btn_down', 'ts': 1}]})
@@ -269,7 +277,9 @@ class IndigoTests(unittest.TestCase):
         self.assertFalse(button.states['stateKnown'])
         self.plugin._handle('ready', self.address, (self.info, status))
         self.assertFalse(button.states['stateKnown'])
-        self.assertIn('Waiting', button.error)
+        self.assertIsNone(button.error)
+        self.assertEqual(button.states['inputStatus'], 'Unknown')
+        self.assertEqual(button.image, 'neutral')
 
     def test_switch_bound_to_input_device_cannot_receive_relay_or_meter_states(self):
         dev = self.devices[1]
@@ -433,3 +443,36 @@ class IndigoTests(unittest.TestCase):
         self.assertEqual({dev.pluginProps['shellyId'] for dev in self.devices.values()},
                          {'shelly-unit', 'second-unit'})
         self.assertTrue(all(dev.deviceTypeId == 'shellySwitch' for dev in self.devices.values()))
+
+    def test_input_display_uses_normal_unknown_and_polled_binary_state_at_startup(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/Devices.xml'
+        definition = ElementTree.parse(xml).find("Device[@id='shellyInput']")
+        self.assertEqual(definition.findtext('UiDisplayStateId'), 'inputStatus')
+        dev = self.devices[2]
+        # Binary input already has a readable position and needs no event.
+        self.assertFalse(dev.states['onOffState'])
+        self.assertEqual(dev.states['inputStatus'], 'Off')
+        self.assertTrue(dev.states['stateKnown'])
+        self.plugin.deviceStartComm(dev)
+        self.assertEqual(dev.states['inputStatus'], 'Connecting')
+        self.assertIsNone(dev.error)
+        self.plugin._handle('ready', self.address, (self.info,
+            {'input:0': {'state': None, '_inputType': 'button', '_enabled': True, '_buttonState': True}}))
+        self.assertEqual(dev.states['inputStatus'], 'On')
+        self.assertTrue(dev.states['onOffState'])
+        self.assertTrue(dev.states['stateKnown'])
+        self.assertIsNone(dev.error)
+        # Restart without an available position must not carry the old ON display forward.
+        self.plugin._handle('ready', self.address, (self.info,
+            {'input:0': {'state': None, '_inputType': 'button', '_enabled': True}}))
+        self.assertEqual(dev.states['inputStatus'], 'Unknown')
+        self.assertFalse(dev.states['stateKnown'])
+        self.assertIsNone(dev.error)
+        self.assertEqual(dev.image, 'neutral')
+        self.assertEqual(dev.ui_values['onOffState'], 'Unknown')
+        self.assertTrue(dev.enabled)
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('offline', self.address, 'timeout')
+        self.assertEqual(dev.error, 'Offline')

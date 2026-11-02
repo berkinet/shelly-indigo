@@ -40,7 +40,11 @@ class Simulator(socketserver.StreamRequestHandler):
             method = request['method']
             self.server.methods.put(method)
             if method == 'Shelly.GetDeviceInfo':
-                result = {'id': 'shelly-simulator', 'gen': 3, 'model': 'test'}
+                result = {'id': 'shelly-simulator', 'gen': getattr(self.server, 'gen', 3), 'model': 'test'}
+                if result['gen'] == 4:
+                    result['mac'] = 'E4B06365AF10'
+            elif method == 'Modbus.GetConfig':
+                result = {'enable': True}
             elif method == 'Input.GetConfig':
                 if getattr(self.server, 'button', False) and not getattr(self, 'pressed_sent', False):
                     self.pressed_sent = True
@@ -125,4 +129,36 @@ class WebsocketTests(unittest.TestCase):
             methods.append(server.methods.get_nowait())
         self.assertIn('Input.GetConfig', methods)
         self.assertTrue(all('Get' in method for method in methods), methods)
+        self.assertFalse(worker.is_alive())
+
+    def test_gen4_sample_supersedes_button_events_buffered_before_initial_read(self):
+        from unittest.mock import patch
+        server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), Simulator)
+        server.daemon_threads = True
+        server.methods = queue.Queue()
+        server.button, server.gen = True, 4
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        events = queue.Queue()
+        # The simulator's ephemeral RPC port is mapped to a standard endpoint by
+        # this connector; no real Modbus connection is made in this test.
+        import websocket
+        connector = lambda *a, **kw: websocket.create_connection(
+            f'ws://127.0.0.1:{server.server_address[1]}/rpc', **kw)
+        worker = Worker('127.0.0.1:80', lambda *args: events.put(args), connector=connector)
+        with patch('shelly.worker.read_button_inputs', return_value={0: False}):
+            try:
+                worker.start()
+                kind, _, payload = events.get(timeout=5)
+                self.assertEqual(kind, 'ready', payload)
+                self.assertIs(payload[1]['input:0']['_buttonState'], False)
+                # The simulated press during Input.GetConfig happened before the
+                # released-position sample and must not overwrite that sample.
+                with self.assertRaises(queue.Empty):
+                    events.get(timeout=0.1)
+            finally:
+                worker.stop()
+                worker.join(5)
+                server.shutdown()
+                server.server_close()
         self.assertFalse(worker.is_alive())

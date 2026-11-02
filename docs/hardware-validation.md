@@ -59,3 +59,23 @@ were not exposed in the fields inspected; no cloud-account lookup was performed.
 Only the name fields were printed during diagnosis. No hardware settings or
 outputs were changed, and no device-specific names or network configuration are
 included in this repository note.
+
+## 2 November 2026 — startup input sampling, development version 0.1.8
+
+The owner confirmed that a button held across restart remained in the old waiting
+error state and that release then established OFF. Read-only checks confirmed
+that the Gen4 input's RPC state remained null while its Modbus service was
+already enabled. Its physical discrete-input bit was readable, and the Modbus
+MAC read matched the RPC device identity after decoding the register byte order.
+
+The complete updated worker/model startup path was then run read-only against
+that Gen4. It returned inputMode button, stateKnown true, inputStatus Off and
+onOffState false without waiting for a button event. No hardware configuration
+or output was changed. True/held samples and startup ordering are validated by
+protocol and WebSocket simulations; held-across-restart operation in the updated
+installed Indigo plugin still needs the owner's repeat test.
+
+The input test review retained existing press/release and lifecycle regressions,
+updated the former waiting-error assertions to normal Unknown display, and added
+wire-level identity/read validation, both sampled positions, failed-read fallback
+and protection against buffered pre-sample events overwriting a newer sample.
