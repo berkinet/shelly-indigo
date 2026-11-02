@@ -8,10 +8,11 @@ The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
 
-**Status: development alpha.** A read-only network probe has confirmed Bonjour
-discovery of 11 Shelly endpoints on the development network. Full Indigo device
-creation and physical output control are still awaiting validation. Gen1–Gen4
-support is the project goal, not a claim of complete support in this release. This is a new project, not a fork of kw123/SHELLY.
+**Status: development alpha.** Indigo 2026.1 has confirmed discovery and RPC
+connections for 11 Shelly devices, with automatic creation of eight switches and
+one binary input. Physical output control is still awaiting validation. Gen1–Gen4
+support is the project goal, not a claim of complete support in this release.
+See [hardware validation](docs/hardware-validation.md) for the current evidence. This is a new project, not a fork of kw123/SHELLY.
 
 ## Initial alpha features
 
