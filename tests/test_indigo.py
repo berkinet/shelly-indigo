@@ -842,3 +842,18 @@ class IndigoTests(unittest.TestCase):
         self.assertIn('unassigned channels: switch:0', records[-1].getMessage())
         self.assertIn('shelly-unit/switch:0', dict(self.plugin.getShellyChannels(typeId='shellySwitch')))
         self.assertIsNone(self.devices[2].error)
+
+    def test_manually_entered_existing_binding_explains_hidden_channel(self):
+        existing = self.devices[1]
+        for selection in (None, '', '_none_'):
+            values = {**existing.pluginProps, 'host': '192.0.2.1', 'selectedChannel': selection}
+            result = self.plugin.validateDeviceConfigUi(values, 'shellySwitch', 0)
+            self.assertFalse(result[0])
+            message = result[2]['showAlertText']
+            self.assertIn('already configured', message)
+            self.assertIn(existing.name, message)
+            self.assertIn(f'Indigo ID {existing.id}', message)
+        self.assertNotIn('shelly-unit/switch:0', dict(self.plugin.getShellyChannels(typeId='shellySwitch')))
+        own, _ = self.plugin.getDeviceConfigUiValues(existing.pluginProps, 'shellySwitch', existing.id)
+        self.assertTrue(self.plugin.validateDeviceConfigUi(own, 'shellySwitch', existing.id)[0])
+        self.assertEqual(len(self.devices), 2)

@@ -612,13 +612,16 @@ class Plugin(indigo.PluginBase):
         if saved:
             choices.setdefault(self._selection_key(saved), saved)
         message = None
-        if not selection or selection not in choices:
+        # A manually filled form can identify an existing binding even without a
+        # dropdown selection. Explain that duplicate before the generic selector error.
+        candidate = self._selection_key(valuesDict) if selection == NO_CHANNEL else selection
+        for dev in self._devices():
+            if candidate and dev.id != int(devId or 0) and self._selection_key(dev.pluginProps) == candidate:
+                message = (f"This channel is already configured as '{dev.name}' "
+                           f"(Indigo ID {dev.id}). Edit that device instead.")
+                break
+        if message is None and selection not in choices:
             message = "Select a discovered channel matching this Indigo device type."
-        else:
-            for dev in self._devices():
-                if dev.id != int(devId or 0) and self._selection_key(dev.pluginProps) == selection:
-                    message = f"This channel is already configured as '{dev.name}'. Edit that device instead."
-                    break
         if message:
             return False, valuesDict, indigo.Dict({"selectedChannel": message, "showAlertText": message})
         valuesDict = self._fill_channel_selection(valuesDict, selection, choices[selection])

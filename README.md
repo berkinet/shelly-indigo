@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.11 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.11-alpha.1/Shelly-0.1.11.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.12 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.12-alpha.1/Shelly-0.1.12.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -92,7 +92,11 @@ Indigo devices are hidden. Disabled Indigo devices still reserve their channels.
 Deleting an Indigo device makes its channel selectable again on refresh. Hiding
 is per channel: assigning a switch or dimmer does not hide unused inputs on the
 same physical Shelly. Validation still prevents duplicate saves if another dialog
-claims a channel after the list was opened. The selector offers switches, dimmers,
+claims a channel after the list was opened. From 0.1.12, manually entering an
+already assigned device ID/channel also names the existing Indigo device and its
+ID in the error. New bindings still require a dropdown selection; filling the
+detail fields alone does not create a manually configured connection.
+The selector offers switches, dimmers,
 binary inputs and button inputs; unsupported components are omitted.
 
 ### Names assigned in Shelly
@@ -262,7 +266,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.11.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.12.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run
