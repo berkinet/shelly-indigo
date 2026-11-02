@@ -15,6 +15,10 @@ from shelly.discovery import Discovery
 from shelly.model import Inventory, endpoint
 from shelly.worker import Worker
 
+# Indigo dynamic lists require nonempty IDs, including non-device rows.
+ALL_DEVICES = "_all_"
+NO_CHANNEL = "_none_"
+
 
 class Plugin(indigo.PluginBase):
     def __init__(self, pluginId, pluginDisplayName, pluginVersion, pluginPrefs):
@@ -114,12 +118,12 @@ class Plugin(indigo.PluginBase):
                 kinds.add("switch")
             if payload.get("includeInputs"):
                 kinds.add("input")
-            target = payload.get("shellyId", "")
+            target = payload.get("shellyId") or ALL_DEVICES
             for host, inventory in list(self.inventory.items()):
                 info = self.info.get(host)
                 if info is None:
                     continue
-                if target and info["id"] != target:
+                if target != ALL_DEVICES and info["id"] != target:
                     continue
                 with self.catalog_lock:
                     online = {key for key, entry in self.catalog.items() if entry["online"]}
@@ -272,7 +276,7 @@ class Plugin(indigo.PluginBase):
             devices = {entry["shellyId"]: self._device_label(
                 {"id": entry["shellyId"], "name": entry.get("shellyName")})
                 for entry in self.catalog.values() if entry["online"]}
-        return [("", "All discovered Shelly devices")] + sorted(devices.items(), key=lambda item: item[1].casefold())
+        return [(ALL_DEVICES, "All discovered Shelly devices")] + sorted(devices.items(), key=lambda item: item[1].casefold())
 
     def createDiscoveredDevices(self, valuesDict=None, typeId=""):
         values = valuesDict or {}
@@ -282,7 +286,7 @@ class Plugin(indigo.PluginBase):
             self.logger.warning("Select switches and/or inputs before creating Indigo devices")
             return False
         self._emit("create_devices", "", {"includeSwitches": bool(switches),
-                   "includeInputs": bool(inputs), "shellyId": values.get("shellyId", "")})
+                   "includeInputs": bool(inputs), "shellyId": values.get("shellyId") or ALL_DEVICES})
         return True
 
     @staticmethod
@@ -354,21 +358,22 @@ class Plugin(indigo.PluginBase):
                 label += " [offline]"
             options.append((key, label))
         placeholder = "Select a Shelly channel" if options else "No supported channels discovered yet"
-        return [("", placeholder)] + sorted(options, key=lambda item: item[1].casefold())
+        return [(NO_CHANNEL, placeholder)] + sorted(options, key=lambda item: item[1].casefold())
 
     def getDeviceConfigUiValues(self, pluginProps, typeId, devId):
         values = indigo.Dict(pluginProps)
         if self._expected_device_type(pluginProps) == typeId:
-            values["selectedChannel"] = self._selection_key(pluginProps)
+            values["selectedChannel"] = self._selection_key(pluginProps) or NO_CHANNEL
         else:
             # Changing the Indigo type must not carry an incompatible old binding
             # through the offline-device fallback in validation.
-            values["selectedChannel"] = ""
-            self._fill_channel_selection(values, "", None)
+            values["selectedChannel"] = NO_CHANNEL
+            self._fill_channel_selection(values, NO_CHANNEL, None)
         return values, indigo.Dict()
 
     def shellyChannelSelected(self, valuesDict, typeId, devId):
-        selection = valuesDict.get("selectedChannel", "")
+        selection = valuesDict.get("selectedChannel") or NO_CHANNEL
+        valuesDict["selectedChannel"] = selection
         entry = self._channel_choices(typeId).get(selection)
         saved = self._saved_channel(devId, typeId)
         if entry is None and saved and self._selection_key(saved) == selection:
@@ -390,7 +395,8 @@ class Plugin(indigo.PluginBase):
         return self.shellyChannelSelected(valuesDict, typeId, devId)
 
     def validateDeviceConfigUi(self, valuesDict, typeId, devId):
-        selection = valuesDict.get("selectedChannel", "")
+        selection = valuesDict.get("selectedChannel") or NO_CHANNEL
+        valuesDict["selectedChannel"] = selection
         choices = self._channel_choices(typeId)
         saved = self._saved_channel(devId, typeId)
         if saved:

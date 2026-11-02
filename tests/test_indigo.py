@@ -163,7 +163,7 @@ class IndigoTests(unittest.TestCase):
                 self.assertEqual(field.get('type'), 'menu')
                 generate = getattr(self.plugin, field.find('List').get('method'))
                 options = generate(typeId=type_id)
-                self.assertEqual([key for key, label in options if key], [f'shelly-unit/{component}'])
+                self.assertEqual([key for key, label in options[1:]], [f'shelly-unit/{component}'])
                 self.assertIn('already configured', options[1][1])
                 changed = getattr(self.plugin, field.findtext('CallbackMethod'))
                 values = changed({'selectedChannel': options[1][0]}, type_id, 0)
@@ -290,7 +290,8 @@ class IndigoTests(unittest.TestCase):
         dev.deviceTypeId = 'shellyInput'
         dev.stateListOrDisplayStateIdChanged()
         values, _ = self.plugin.getDeviceConfigUiValues(dev.pluginProps, 'shellyInput', dev.id)
-        self.assertEqual(values['selectedChannel'], '')
+        self.assertTrue(values['selectedChannel'])
+        self.assertFalse(self.plugin.validateDeviceConfigUi(values, 'shellyInput', dev.id)[0])
         self.assertEqual(values['host'], '')
         self.assertNotIn('shelly-unit/switch:0', dict(self.plugin.getShellyChannels(typeId='shellyInput', targetId=dev.id)))
         result = self.plugin.validateDeviceConfigUi({'selectedChannel': 'shelly-unit/switch:0'}, 'shellyInput', dev.id)
@@ -393,3 +394,42 @@ class IndigoTests(unittest.TestCase):
         with self.assertLogs('test-plugin', level='WARNING'):
             self.assertFalse(self.plugin.createDiscoveredDevices({'includeSwitches': False, 'includeInputs': False}))
         self.assertTrue(self.plugin.events.empty())
+
+    def test_dynamic_menu_ids_are_legal_including_all_and_placeholder_rows(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        server = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin'
+        creation_field = ElementTree.parse(server / 'MenuItems.xml').find("MenuItem/ConfigUI/Field[@id='shellyId']")
+        channels = ElementTree.parse(server / 'Devices.xml')
+        for empty in (False, True):
+            if empty:
+                self.plugin.catalog.clear()
+            menus = [self.plugin.getDiscoveredShellyDevices()]
+            for type_id in ('shellySwitch', 'shellyInput'):
+                options = self.plugin.getShellyChannels(typeId=type_id)
+                menus.append(options)
+                field = channels.find(f"Device[@id='{type_id}']/ConfigUI/Field[@id='selectedChannel']")
+                self.assertEqual(field.get('defaultValue'), options[0][0])
+                self.assertFalse(self.plugin.validateDeviceConfigUi({'selectedChannel': options[0][0]}, type_id, 0)[0])
+            self.assertEqual(creation_field.get('defaultValue'), menus[0][0][0])
+            for options in menus:
+                for key, label in options:
+                    self.assertIsInstance(key, str)
+                    self.assertTrue(key.strip(), label)
+                    self.assertNotIn(',', key)
+                    self.assertNotIn(';', key)
+
+    def test_all_devices_menu_default_creates_all_matching_channels(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/MenuItems.xml'
+        field = ElementTree.parse(xml).find("MenuItem/ConfigUI/Field[@id='shellyId']")
+        self.devices.clear()
+        second = {**self.info, 'id': 'second-unit'}
+        self.plugin._handle('ready', '192.0.2.2:80', (second, self.status))
+        self.plugin.createDiscoveredDevices({'shellyId': field.get('defaultValue'),
+                                            'includeSwitches': True, 'includeInputs': False})
+        self.plugin._handle(*self.plugin.events.get_nowait())
+        self.assertEqual({dev.pluginProps['shellyId'] for dev in self.devices.values()},
+                         {'shelly-unit', 'second-unit'})
+        self.assertTrue(all(dev.deviceTypeId == 'shellySwitch' for dev in self.devices.values()))

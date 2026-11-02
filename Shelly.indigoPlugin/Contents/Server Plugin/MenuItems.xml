@@ -5,7 +5,7 @@
     <CallbackMethod>createDiscoveredDevices</CallbackMethod>
     <ButtonTitle>Create Devices</ButtonTitle>
     <ConfigUI>
-      <Field id="shellyId" type="menu" defaultValue="">
+      <Field id="shellyId" type="menu" defaultValue="_all_">
         <Label>Shelly device:</Label>
         <List class="self" method="getDiscoveredShellyDevices" />
       </Field>

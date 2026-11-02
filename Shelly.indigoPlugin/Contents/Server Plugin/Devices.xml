@@ -3,7 +3,7 @@
   <Device id="shellySwitch" type="relay">
     <Name>Shelly Switch</Name>
     <ConfigUI>
-      <Field id="selectedChannel" type="menu" defaultValue="">
+      <Field id="selectedChannel" type="menu" defaultValue="_none_">
         <Label>Shelly channel:</Label>
         <List class="self" method="getShellyChannels" dynamicReload="true" />
         <CallbackMethod>shellyChannelSelected</CallbackMethod>
@@ -66,7 +66,7 @@
   <Device id="shellyInput" type="sensor">
     <Name>Shelly Input</Name>
     <ConfigUI>
-      <Field id="selectedChannel" type="menu" defaultValue="">
+      <Field id="selectedChannel" type="menu" defaultValue="_none_">
         <Label>Shelly channel:</Label>
         <List class="self" method="getShellyChannels" dynamicReload="true" />
         <CallbackMethod>shellyChannelSelected</CallbackMethod>

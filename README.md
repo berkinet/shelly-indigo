@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.6 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.6-alpha.1/Shelly-0.1.6.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.7 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.7-alpha.1/Shelly-0.1.7.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -93,8 +93,10 @@ does not rename existing Indigo devices.
 A name assigned in the Shelly app is usable here when it is also stored as the
 device's local name. Labels kept only in the cloud account are not exposed by
 this local name field. This plugin does not connect to the Shelly cloud account
-or retrieve app-only cloud labels. Read-only checks of two devices on the owner's
-network returned null local names; no names or device settings were changed.
+or retrieve app-only cloud labels. Read-only checks of all 12 devices discovered
+on the owner's network returned null device names and null input/switch/light
+channel names. If friendly names are visible in the app, they are not being
+exposed in those local configuration fields. No names or settings were changed.
 
 See [Shelly's system configuration API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys/).
 
@@ -165,7 +167,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.6.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.7.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run

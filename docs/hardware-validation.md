@@ -48,3 +48,14 @@ both supported Indigo types. Regression tests use a stricter Indigo test double
 that rejects any update to a state absent from the actual Devices.xml schema.
 Already-inconsistent devices require correcting their type/channel in Indigo;
 the plugin does not delete or recreate them as a repair.
+
+## 2 November 2026 — local naming verification, development version 0.1.7
+
+Read-only discovery and Shelly.GetConfig queries checked all 12 discovered
+endpoints. All returned null for sys.device.name and for all returned input,
+switch and light channel name fields. This confirms that default internal IDs
+are the appropriate fallback for the locally available data. App-visible names
+were not exposed in the fields inspected; no cloud-account lookup was performed.
+Only the name fields were printed during diagnosis. No hardware settings or
+outputs were changed, and no device-specific names or network configuration are
+included in this repository note.
