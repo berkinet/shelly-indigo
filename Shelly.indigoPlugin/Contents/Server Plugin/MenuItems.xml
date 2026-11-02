@@ -18,7 +18,7 @@
         <Description>Create missing binary/button input devices</Description>
       </Field>
       <Field id="creationHelp" type="label">
-        <Label>Creates only the selected channel types for currently connected discovered devices. Existing devices and names are preserved. Discovery continues without creating devices automatically.</Label>
+        <Label>Creates only the selected channel types for currently connected discovered devices. Existing devices and names are preserved. Devices marked no supported channels are discovered but cannot yet be created. Discovery continues without creating devices automatically.</Label>
       </Field>
     </ConfigUI>
   </MenuItem>

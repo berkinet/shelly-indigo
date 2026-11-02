@@ -30,6 +30,7 @@ class Plugin(indigo.PluginBase):
         self.info = {}
         self.inventory = {}
         self.catalog = {}
+        self.discovered_devices = {}
         self.catalog_lock = threading.Lock()
         self.reported_binding_errors = {}
         self.button_triggers = {}
@@ -155,6 +156,9 @@ class Plugin(indigo.PluginBase):
         elif kind == "identity" and address in self.info:
             self.info[address] = dict(payload)
             with self.catalog_lock:
+                identity = payload["id"]
+                if identity in self.discovered_devices:
+                    self.discovered_devices[identity]["name"] = payload.get("name")
                 for key, entry in list(self.catalog.items()):
                     if entry["host"] == address:
                         self.catalog[key] = {**entry, "shellyName": payload.get("name") or "",
@@ -190,6 +194,12 @@ class Plugin(indigo.PluginBase):
             self.logger.debug("Querying %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
             with self.catalog_lock:
+                # Discovery tracks physical units independently of supported channels.
+                for entry in self.discovered_devices.values():
+                    if entry["host"] == address:
+                        entry["online"] = False
+                self.discovered_devices[info["id"]] = {
+                    "id": info["id"], "name": info.get("name"), "host": address, "online": True}
                 self.catalog = {key: entry for key, entry in self.catalog.items()
                                 if entry["shellyId"] != info["id"]}
             self._update(address, status)
@@ -214,6 +224,9 @@ class Plugin(indigo.PluginBase):
             if address in self.inventory:
                 self.inventory[address].invalidate_buttons()
             with self.catalog_lock:
+                for entry in self.discovered_devices.values():
+                    if entry["host"] == address:
+                        entry["online"] = False
                 for key, entry in list(self.catalog.items()):
                     if entry["host"] == address:
                         self.catalog[key] = {**entry, "online": False}
@@ -377,9 +390,10 @@ class Plugin(indigo.PluginBase):
 
     def getDiscoveredShellyDevices(self, filter="", valuesDict=None, typeId="", targetId=0):
         with self.catalog_lock:
-            devices = {entry["shellyId"]: self._device_label(
-                {"id": entry["shellyId"], "name": entry.get("shellyName")})
-                for entry in self.catalog.values() if entry["online"]}
+            supported = {entry["shellyId"] for entry in self.catalog.values() if entry["online"]}
+            devices = {identity: self._device_label(entry) +
+                       (" [no supported channels]" if identity not in supported else "")
+                       for identity, entry in self.discovered_devices.items() if entry["online"]}
         return [(ALL_DEVICES, "All discovered Shelly devices")] + sorted(devices.items(), key=lambda item: item[1].casefold())
 
     def createDiscoveredDevices(self, valuesDict=None, typeId=""):

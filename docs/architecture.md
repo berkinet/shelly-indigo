@@ -24,6 +24,10 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   explicit one-time plugin menu command, scoped by physical unit and channel
   type, or an individual New Device save. Legacy autoCreate preferences have no
   effect. Existing mapped devices keep receiving updates.
+- Source build 0.1.9 (unreleased) keeps a physical discovery snapshot separate
+  from the supported-channel catalog. The creation menu includes online units
+  without supported channels and labels them accordingly; it does not create
+  unsupported channels. Names, reconnects and address changes update that snapshot.
 - Device-local names are read through Sys.GetConfig.device.name at connection
   and during reconciliation. They prefix internal IDs in selectors and new
   Indigo device names. Existing Indigo names are not overwritten. App-only cloud

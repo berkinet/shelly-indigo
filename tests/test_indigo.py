@@ -419,6 +419,7 @@ class IndigoTests(unittest.TestCase):
         for empty in (False, True):
             if empty:
                 self.plugin.catalog.clear()
+                self.plugin.discovered_devices.clear()
             menus = [self.plugin.getDiscoveredShellyDevices()]
             for type_id in ('shellySwitch', 'shellyInput'):
                 options = self.plugin.getShellyChannels(typeId=type_id)
@@ -649,3 +650,40 @@ class IndigoTests(unittest.TestCase):
         for level in choices:
             self.assertTrue(self.plugin.validatePrefsConfigUi({'logLevel': level})[0])
         self.assertFalse(self.plugin.validatePrefsConfigUi({'logLevel': 'INVALID'})[0])
+
+    def test_discovered_dimmer_is_visible_without_supported_channels_or_creation(self):
+        info = {'id': 'test-dimmer', 'gen': 3, 'model': 'S3DM-0A101WWL'}
+        address = '192.0.2.50:80'
+        status = {'light:0': {'output': False, 'brightness': 100},
+                  'input:0': {'state': None, '_inputType': 'button', '_enabled': False}}
+        self.plugin._handle('ready', address, (info, status))
+        self.assertIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['test-dimmer'])
+        self.assertFalse(any(entry['shellyId'] == 'test-dimmer' for entry in self.plugin.catalog.values()))
+        self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True,
+                                                  'shellyId': 'test-dimmer'})
+        self.assertEqual(len(self.devices), 2)
+        self.plugin._handle('identity', address, {**info, 'name': 'Bedroom dimmer'})
+        self.assertIn('Bedroom dimmer', dict(self.plugin.getDiscoveredShellyDevices())['test-dimmer'])
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('offline', address, 'test disconnect')
+        self.assertNotIn('test-dimmer', dict(self.plugin.getDiscoveredShellyDevices()))
+        self.plugin._handle('ready', address, (info, status))
+        self.assertIn('test-dimmer', dict(self.plugin.getDiscoveredShellyDevices()))
+        self.plugin._handle('status', address, {'input:0': {'state': None, '_inputType': 'button', '_enabled': True}})
+        self.assertNotIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['test-dimmer'])
+        self.assertEqual(len(self.devices), 2)
+
+    def test_discovered_device_identity_survives_address_move_and_reuse(self):
+        info = {'id': 'test-dimmer', 'gen': 3}
+        status = {'light:0': {'output': False}}
+        old_address, new_address = '192.0.2.50:80', '192.0.2.51:80'
+        self.plugin._handle('ready', old_address, (info, status))
+        self.plugin.workers[old_address] = Mock()
+        self.plugin._handle('ready', new_address, (info, status))
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('offline', old_address, 'stale worker')
+        self.assertIn('test-dimmer', dict(self.plugin.getDiscoveredShellyDevices()))
+        self.plugin._handle('ready', new_address, ({**info, 'id': 'replacement-unit'}, status))
+        options = dict(self.plugin.getDiscoveredShellyDevices())
+        self.assertNotIn('test-dimmer', options)
+        self.assertIn('replacement-unit', options)
