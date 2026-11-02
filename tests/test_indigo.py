@@ -687,3 +687,85 @@ class IndigoTests(unittest.TestCase):
         options = dict(self.plugin.getDiscoveredShellyDevices())
         self.assertNotIn('test-dimmer', options)
         self.assertIn('replacement-unit', options)
+
+    def test_query_report_lists_components_and_warns_about_omitted_channels(self):
+        self.plugin.pluginPrefs['logLevel'] = 'DEBUG'
+        self.plugin.startup()
+        records = self.plugin.indigo_log_handler.buffer
+        records.clear()
+        info = {'id': 'test-dimmer', 'name': 'Bedroom', 'gen': 3}
+        status = {'light:0': {'output': False, 'brightness': 100},
+                  'wifi': {'ssid': 'private-value'}, 'cloud': {'connected': True},
+                  'script:1': {'running': True}}
+        self.plugin._handle('ready', '192.0.2.50:80', (info, status))
+        messages = [record.getMessage() for record in records]
+        summary = next(message for message in messages if message.startswith('Queried'))
+        for text in ('Bedroom (test-dimmer)', '192.0.2.50:80', 'Gen3', 'light:0', 'wifi', 'cloud', 'script:1',
+                     'available for Indigo creation: none'):
+            self.assertIn(text, summary)
+        warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('light:0 (type not supported)', warnings[0])
+        self.assertIn('remains in the discovered-device menu', warnings[0])
+        self.assertNotIn('script:1', warnings[0])
+        self.assertNotIn('wifi', warnings[0])
+        self.assertFalse(any('private-value' in message for message in messages))
+        self.assertIn('test-dimmer', dict(self.plugin.getDiscoveredShellyDevices()))
+        self.assertEqual(len(self.devices), 2)
+
+    def test_partial_poll_and_reconnect_do_not_repeat_unsupported_warnings(self):
+        self.plugin.startup()
+        records = self.plugin.plugin_file_handler.buffer
+        info = {'id': 'mixed-unit', 'gen': 3}
+        address = '192.0.2.50:80'
+        status = {'switch:0': {'output': False}, 'light:0': {'output': True}, 'wifi': {}}
+        self.plugin._handle('ready', address, (info, status))
+        records.clear()
+        self.plugin._handle('status', address, {'switch:0': {'apower': 12}})
+        self.plugin._handle('status', address, {'wifi': {'rssi': -50}})
+        self.assertEqual(records, [])
+        self.plugin._handle('ready', address, (info, status))
+        self.assertTrue(any(record.getMessage().startswith('Queried') for record in records))
+        self.assertFalse(any(record.levelno == logging.WARNING for record in records))
+        records.clear()
+        self.plugin._handle('status', address, {'pm1:0': {'apower': 0}})
+        warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('light:0', warnings[0])
+        self.assertIn('pm1:0', warnings[0])
+        self.assertIn('available channels: switch:0', warnings[0])
+        self.assertNotIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['mixed-unit'])
+
+    def test_disabled_input_warning_recovers_and_reappears_at_both_log_levels(self):
+        self.plugin.startup()
+        info = {'id': 'input-unit', 'gen': 3}
+        address = '192.0.2.50:80'
+        disabled = {'input:0': {'state': None, '_inputType': 'button', '_enabled': False}}
+        enabled = {'input:0': {'state': None, '_inputType': 'button', '_enabled': True}}
+        for level in ('INFO', 'DEBUG'):
+            self.plugin.closedPrefsConfigUi({'logLevel': level}, False)
+            self.plugin._handle('ready', address, (info, enabled))
+            records = self.plugin.indigo_log_handler.buffer
+            records.clear()
+            self.plugin._handle('status', address, disabled)
+            warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
+            self.assertEqual(len(warnings), 1)
+            self.assertIn('input:0 (disabled)', warnings[0])
+            records.clear()
+            self.plugin._handle('status', address, disabled)
+            self.assertEqual(records, [])
+            self.plugin._handle('status', address, enabled)
+            records.clear()
+            self.plugin._handle('status', address, disabled)
+            self.assertEqual(sum(record.levelno == logging.WARNING for record in records), 1)
+
+    def test_services_only_device_warns_that_no_channels_are_available(self):
+        self.plugin.startup()
+        records = self.plugin.indigo_log_handler.buffer
+        records.clear()
+        self.plugin._handle('ready', '192.0.2.50:80', ({'id': 'empty-unit', 'gen': 3},
+                                                  {'wifi': {}, 'cloud': {}, 'sys': {}, 'script:1': {}}))
+        warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
+        self.assertEqual(len(warnings), 1)
+        self.assertIn('no supported switch or input channels reported', warnings[0])
+        self.assertIn('empty-unit', dict(self.plugin.getDiscoveredShellyDevices()))

@@ -3,6 +3,7 @@ from pathlib import Path
 import importlib
 import logging
 import queue
+import re
 import sys
 import threading
 import time
@@ -31,6 +32,8 @@ class Plugin(indigo.PluginBase):
         self.inventory = {}
         self.catalog = {}
         self.discovered_devices = {}
+        self.component_reports = {}
+        self.reported_channel_warnings = {}
         self.catalog_lock = threading.Lock()
         self.reported_binding_errors = {}
         self.button_triggers = {}
@@ -193,6 +196,7 @@ class Plugin(indigo.PluginBase):
             self.info[address] = info
             self.logger.debug("Querying %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
+            self.component_reports[address] = (set(), None)
             with self.catalog_lock:
                 # Discovery tracks physical units independently of supported channels.
                 for entry in self.discovered_devices.values():
@@ -220,6 +224,7 @@ class Plugin(indigo.PluginBase):
                     if (event.get("event") == "btn_down" and not duplicate
                             and not payload.get("_initial", False)):
                         self._fire_button_pressed(address, channel, event)
+            self._report_components(address, {})
         elif kind == "offline":
             if address in self.inventory:
                 self.inventory[address].invalidate_buttons()
@@ -245,6 +250,46 @@ class Plugin(indigo.PluginBase):
 
     def _update(self, address, status):
         self._publish_channels(address, self.inventory[address].merge(status))
+        self._report_components(address, status)
+
+    def _report_components(self, address, status):
+        info = self.info[address]
+        components, previous = self.component_reports.get(address, (set(), None))
+        # Keep names across partial notifications; never log raw status/config values.
+        components.update(key for key, value in status.items() if isinstance(value, dict)
+                          and re.fullmatch(r"[a-z][a-z0-9_]*(?::[0-9]+)?", key))
+        channels = self.inventory[address].channels
+        components.update(channels)
+        available = sorted(key for key, channel in channels.items() if channel.supported)
+        omitted = []
+        for key in sorted(components):
+            # Scripts are device services, not physical channels for Indigo creation.
+            if ":" not in key or key.startswith("script:") or key in available:
+                continue
+            channel = channels.get(key)
+            reason = ("disabled" if channel and channel.values.get("_enabled") is False
+                      else "input mode not supported" if channel else "type not supported")
+            omitted.append(f"{key} ({reason})")
+        summary = (tuple(sorted(components)), tuple(available), tuple(omitted))
+        if summary != previous:
+            self.logger.debug("Queried %s at %s (Gen%s): components: %s; available for Indigo creation: %s",
+                              self._device_label(info), address, info["gen"],
+                              ", ".join(sorted(components)) or "none", ", ".join(available) or "none")
+        self.component_reports[address] = (components, summary)
+        # Once per physical unit/problem combination, including across reconnects.
+        # A changed or resolved problem updates the signature so it can be reported again.
+        problem = (tuple(omitted), not available)
+        if omitted or not available:
+            if self.reported_channel_warnings.get(info["id"]) != problem:
+                self.logger.warning(
+                    "%s at %s: unavailable for Indigo device creation: %s. "
+                    "The Shelly remains in the discovered-device menu; available channels: %s.",
+                    self._device_label(info), address,
+                    ", ".join(omitted) or "no supported switch or input channels reported",
+                    ", ".join(available) or "none")
+            self.reported_channel_warnings[info["id"]] = problem
+        else:
+            self.reported_channel_warnings.pop(info["id"], None)
 
     def _publish_channels(self, address, channels, create=False):
         created = 0

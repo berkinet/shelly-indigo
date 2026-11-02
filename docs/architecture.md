@@ -62,6 +62,12 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   Discovery startup, endpoint and query messages use Debug. The plugin file
   handler always retains Debug diagnostics; warnings and errors remain visible
   at both selectable Event Log levels.
+- Query diagnostics list reported component/service names separately from channels
+  available for creation. Unsupported/disabled channels and units with no supported
+  channels produce warnings, deduplicated by physical identity and current problem
+  across polls/reconnects. Partial notifications preserve earlier component names;
+  full connection reads reset the summary. Services do not generate per-channel
+  warnings, and raw status/configuration values are not logged.
 - The repository's plugin bundle includes unmodified portable dependencies.
   Source installation and release installation follow the same dependency path;
   startup checks for missing libraries before starting network workers.

@@ -173,7 +173,19 @@ leaves the level unchanged. Connection preference changes still need a restart.
 
 Info shows normal activity, including explicit device creation, plus warnings
 and errors. Debug also shows discovery startup, discovered endpoints and device
-queries. The plugin's separate log file always includes Debug messages, regardless
+queries. A Debug query summary lists all reported component/service names and
+which channels are available for Indigo creation. It is logged on connection and
+when that summary changes, rather than on every unchanged poll. Raw status and
+configuration values are not dumped.
+
+Warnings identify omitted device channels and their reasons (unsupported type,
+unsupported input mode or disabled input), even if other channels are supported.
+A Shelly with no supported channels also produces a warning. Warnings remain
+visible at Info and Debug, but the same problem is not repeated on routine polls
+or unchanged reconnects. A changed or resolved problem updates that suppression.
+Wi-Fi, Cloud and other services appear in the Debug summary without individual
+unsupported-device warnings. All queried devices remain in the discovery menu.
+The plugin's separate log file always includes Debug messages, regardless
 of the Event Log setting. This setting is not yet in a published release.
 
 ## Troubleshooting discovery
