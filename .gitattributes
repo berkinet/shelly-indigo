@@ -1,0 +1,2 @@
+# Preserve upstream formatting; RST headings can resemble Git conflict markers.
+Shelly.indigoPlugin/Contents/Packages/** linguist-vendored -whitespace conflict-marker-size=32
