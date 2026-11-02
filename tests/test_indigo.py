@@ -703,18 +703,19 @@ class IndigoTests(unittest.TestCase):
         info = {'id': 'test-cover', 'name': 'Bedroom', 'gen': 3}
         status = {'cover:0': {'output': False, 'brightness': 100},
                   'wifi': {'ssid': 'private-value'}, 'cloud': {'connected': True},
-                  'script:1': {'running': True}}
+                  'script:1': {'running': True}, 'infino:0': {'id': 0}}
         self.plugin._handle('ready', '192.0.2.50:80', (info, status))
         messages = [record.getMessage() for record in records]
         summary = next(message for message in messages if message.startswith('Queried'))
         for text in ('Bedroom (test-cover)', '192.0.2.50:80', 'Gen3', 'cover:0', 'wifi', 'cloud', 'script:1',
-                     'available for Indigo creation: none'):
+                     'supported channels: none'):
             self.assertIn(text, summary)
         warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
         self.assertEqual(len(warnings), 1)
         self.assertIn('cover:0 (type not supported)', warnings[0])
         self.assertIn('remains in the discovered-device menu', warnings[0])
         self.assertNotIn('script:1', warnings[0])
+        self.assertNotIn('infino:0', warnings[0])
         self.assertNotIn('wifi', warnings[0])
         self.assertFalse(any('private-value' in message for message in messages))
         self.assertIn('test-cover', dict(self.plugin.getDiscoveredShellyDevices()))
@@ -740,7 +741,7 @@ class IndigoTests(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn('cover:0', warnings[0])
         self.assertIn('pm1:0', warnings[0])
-        self.assertIn('available channels: switch:0', warnings[0])
+        self.assertIn('Supported channels: switch:0', warnings[0])
         self.assertNotIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['mixed-unit'])
 
     def test_disabled_input_warning_recovers_and_reappears_at_both_log_levels(self):
@@ -771,10 +772,10 @@ class IndigoTests(unittest.TestCase):
         records = self.plugin.indigo_log_handler.buffer
         records.clear()
         self.plugin._handle('ready', '192.0.2.50:80', ({'id': 'empty-unit', 'gen': 3},
-                                                  {'wifi': {}, 'cloud': {}, 'sys': {}, 'script:1': {}}))
+                                                  {'wifi': {}, 'cloud': {}, 'sys': {}, 'script:1': {}, 'infino:0': {'id': 0}}))
         warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
         self.assertEqual(len(warnings), 1)
-        self.assertIn('no supported switch, dimmer or input channels reported', warnings[0])
+        self.assertIn('No supported Indigo channels', warnings[0])
         self.assertIn('empty-unit', dict(self.plugin.getDiscoveredShellyDevices()))
 
     def test_creation_dialog_refresh_loads_later_discovery_and_preserves_choices(self):
@@ -809,3 +810,35 @@ class IndigoTests(unittest.TestCase):
                             'Séjour chandelier (test-dimmer)' in message for message in logs))
         self.assertEqual(self.devices, {})
         self.assertTrue(self.plugin.events.empty())
+
+    def test_infino_inventory_keeps_existing_input_valid_and_reports_real_assignments(self):
+        self.plugin.pluginPrefs['logLevel'] = 'DEBUG'
+        self.plugin.startup()
+        self.devices[2].name = 'Garden button'
+        records = self.plugin.indigo_log_handler.buffer
+        records.clear()
+        status = {'input:0': {'state': None, '_inputType': 'button', '_enabled': True},
+                  'switch:0': {'output': False}, 'infino:0': {'id': 0}}
+        self.plugin._handle('ready', self.address, ({**self.info, 'gen': 4}, status))
+        messages = [record.getMessage() for record in records]
+        summary = next(message for message in messages if message.startswith('Queried'))
+        self.assertIn('infino:0', summary)
+        self.assertIn('supported channels: input:0, switch:0', summary)
+        self.assertIn('already configured: input:0 (Indigo 2: Garden button)', summary)
+        self.assertIn('unassigned channels: none', summary)
+        self.assertFalse(any(record.levelno >= logging.WARNING for record in records))
+        self.assertIsNone(self.devices[2].error)
+        self.assertTrue(self.devices[2].states['online'])
+        self.plugin._handle('event', self.address, {'events': [
+            {'component': 'input:0', 'event': 'btn_down', 'ts': 1}]})
+        self.assertTrue(self.devices[2].states['onOffState'])
+        self.assertNotIn('shelly-unit/input:0', dict(self.plugin.getShellyChannels(typeId='shellyInput')))
+        # A disabled Indigo device still reserves its channel, just as the selector does.
+        self.devices[1].enabled = False
+        self.plugin._handle('status', self.address, {})
+        self.assertIn('unassigned channels: none', records[-1].getMessage())
+        del self.devices[1]
+        self.plugin._handle('status', self.address, {})
+        self.assertIn('unassigned channels: switch:0', records[-1].getMessage())
+        self.assertIn('shelly-unit/switch:0', dict(self.plugin.getShellyChannels(typeId='shellySwitch')))
+        self.assertIsNone(self.devices[2].error)

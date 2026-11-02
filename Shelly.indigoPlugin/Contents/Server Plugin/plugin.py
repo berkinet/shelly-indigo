@@ -284,30 +284,44 @@ class Plugin(indigo.PluginBase):
         available = sorted(key for key, channel in channels.items() if channel.supported)
         omitted = []
         for key in sorted(components):
-            # Scripts are device services, not physical channels for Indigo creation.
-            if ":" not in key or key.startswith("script:") or key in available:
+            # Retain these components in Debug inventory without treating them as
+            # missing Indigo switch/input/dimmer channels.
+            if ":" not in key or key.split(":")[0] in ("script", "infino") or key in available:
                 continue
             channel = channels.get(key)
             reason = ("disabled" if channel and channel.values.get("_enabled") is False
                       else "input mode not supported" if channel else "type not supported")
             omitted.append(f"{key} ({reason})")
-        summary = (tuple(sorted(components)), tuple(available), tuple(omitted))
+        configured = {}
+        for dev in self._devices():
+            component = dev.pluginProps.get("component")
+            if dev.pluginProps.get("shellyId") == info["id"] and component in available:
+                configured.setdefault(component, []).append(f"Indigo {dev.id}: {dev.name}")
+        assigned = [f"{key} ({'; '.join(sorted(configured[key]))})" for key in sorted(configured)]
+        unassigned = [key for key in available if key not in configured]
+        summary = (tuple(sorted(components)), tuple(available), tuple(omitted), tuple(assigned))
         if summary != previous:
-            self.logger.debug("Queried %s at %s (Gen%s): components: %s; available for Indigo creation: %s",
-                              self._device_label(info), address, info["gen"],
-                              ", ".join(sorted(components)) or "none", ", ".join(available) or "none")
+            self.logger.debug(
+                "Queried %s at %s (Gen%s): components: %s; supported channels: %s; "
+                "already configured: %s; unassigned channels: %s",
+                self._device_label(info), address, info["gen"], ", ".join(sorted(components)) or "none",
+                ", ".join(available) or "none", ", ".join(assigned) or "none", ", ".join(unassigned) or "none")
         self.component_reports[address] = (components, summary)
         # Once per physical unit/problem combination, including across reconnects.
         # A changed or resolved problem updates the signature so it can be reported again.
         problem = (tuple(omitted), not available)
         if omitted or not available:
             if self.reported_channel_warnings.get(info["id"]) != problem:
-                self.logger.warning(
-                    "%s at %s: unavailable for Indigo device creation: %s. "
-                    "The Shelly remains in the discovered-device menu; available channels: %s.",
-                    self._device_label(info), address,
-                    ", ".join(omitted) or "no supported switch, dimmer or input channels reported",
-                    ", ".join(available) or "none")
+                if available:
+                    self.logger.warning(
+                        "Unsupported Indigo channels on %s at %s: %s. Supported channels: %s; "
+                        "unassigned channels: %s.", self._device_label(info), address,
+                        ", ".join(omitted), ", ".join(available), ", ".join(unassigned) or "none")
+                else:
+                    self.logger.warning(
+                        "No supported Indigo channels on %s at %s. Unavailable channels: %s. "
+                        "The Shelly remains in the discovered-device menu.",
+                        self._device_label(info), address, ", ".join(omitted) or "none reported")
             self.reported_channel_warnings[info["id"]] = problem
         else:
             self.reported_channel_warnings.pop(info["id"], None)

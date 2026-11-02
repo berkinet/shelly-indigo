@@ -127,3 +127,15 @@ and real WebSocket notification/reconciliation. Control tests use only simulator
 
 - https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light/
 - https://github.com/IndigoDomotics/IndigoSDK/tree/main/Example%20Device%20-%20Relay%20and%20Dimmer.indigoPlugin
+
+## Diagnostic correction — 0.1.11
+
+`infino:*` remains visible in Debug component inventory without an unsupported-
+channel warning, like the existing script service handling. Read-only checks
+found status containing only an ID and disabled configuration with interval/UDP
+fields; the exact function has not been established. Query summaries distinguish
+supported channels, actual Indigo assignments (including disabled devices), and
+unassigned channels. Partial-support warnings identify omitted channels without
+claiming the whole physical unit is unavailable. Units with no supported channels
+still warn. This diagnostic change does not alter bindings, device creation,
+state propagation or hardware configuration.

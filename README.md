@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.10 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.10-alpha.1/Shelly-0.1.10.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.11 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.11-alpha.1/Shelly-0.1.11.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -208,7 +208,9 @@ leaves the level unchanged. Connection preference changes still need a restart.
 Info shows normal activity, including explicit device creation, plus warnings
 and errors. Debug also shows discovery startup, discovered endpoints and device
 queries. A Debug query summary lists all reported component/service names and
-which channels are available for Indigo creation. It is logged on connection and
+supported channels, existing Indigo assignments (including device IDs/names),
+and channels still unassigned. From 0.1.11, an already configured channel is no
+longer described as available for creation. It is logged on connection and
 when that summary changes, rather than on every unchanged poll. Raw status and
 configuration values are not dumped.
 
@@ -218,7 +220,12 @@ A Shelly with no supported channels also produces a warning. Warnings remain
 visible at Info and Debug, but the same problem is not repeated on routine polls
 or unchanged reconnects. A changed or resolved problem updates that suppression.
 Wi-Fi, Cloud and other services appear in the Debug summary without individual
-unsupported-device warnings. All queried devices remain in the discovery menu.
+unsupported-device warnings. From 0.1.11, `infino:*` also stays in Debug inventory
+without per-channel warnings. In read-only checks it reported only an ID and was
+disabled, with reporting interval/UDP configuration; its exact purpose remains
+unconfirmed. Unsupported-channel warnings identify only the omitted channels and
+retain the supported/unassigned list. A separate warning identifies devices with
+no supported channels. All queried devices remain in the discovery menu.
 The plugin's separate log file always includes Debug messages, regardless
 of the Event Log setting. Available in 0.1.10 and later.
 
@@ -255,7 +262,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.10.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.11.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run
