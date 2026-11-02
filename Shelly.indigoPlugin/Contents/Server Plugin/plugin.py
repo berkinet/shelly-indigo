@@ -96,11 +96,14 @@ class Plugin(indigo.PluginBase):
 
     def _sync_communication(self):
         bindings = [dev for dev in self._devices() if self._selection_key(dev.pluginProps)]
-        enabled = {}
+        enabled, channels = {}, {}
         for dev in bindings:
             identity = dev.pluginProps["shellyId"]
-            enabled[identity] = enabled.get(identity, False) or self._device_communicating(dev)
-        self.communication.replace(enabled)
+            active = self._device_communicating(dev)
+            enabled[identity] = enabled.get(identity, False) or active
+            key = (identity, dev.pluginProps["component"])
+            channels[key] = channels.get(key, False) or active
+        self.communication.replace(enabled, channels)
         return bindings
 
     def _communication_bindings(self, address, identity=None, bindings=None):
@@ -183,7 +186,7 @@ class Plugin(indigo.PluginBase):
         explicit = {endpoint(host.strip()) for host in self.pluginPrefs.get("hosts", "").split(",") if host.strip()}
         password = lambda identity: self.credentials.password(identity, address in explicit)
         worker = Worker(address, emit, password, expected_id, exclude_id=exclude_id,
-                        permitted=self.communication.permits)
+                        permitted=self.communication.permits, permitted_command=self.communication.permits_command)
         self.workers[address] = worker
         self.logger.debug("Discovered Shelly endpoint %s", address)
         try:
@@ -532,6 +535,8 @@ class Plugin(indigo.PluginBase):
                         dev.updateStateOnServer("stateKnown", False)
                         dev.updateStateOnServer("inputStatus", "Offline")
                     dev.setErrorStateOnServer("Offline")
+        elif kind == "command_cancelled":
+            self.logger.debug("Shelly %s command %s cancelled: channel communication disabled", address, payload)
         elif kind == "command_error":
             if isinstance(payload, dict):
                 identity = self.info.get(address, {}).get("id")

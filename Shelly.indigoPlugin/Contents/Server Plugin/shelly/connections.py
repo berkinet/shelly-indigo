@@ -47,11 +47,19 @@ class CommunicationPolicy:
     def __init__(self):
         self.lock = threading.Lock()
         self.disabled = set()
+        self.disabled_channels = set()
 
-    def replace(self, enabled_by_identity):
+    def replace(self, enabled_by_identity, enabled_by_channel=None):
         with self.lock:
             self.disabled = {identity for identity, enabled in enabled_by_identity.items() if not enabled}
+            self.disabled_channels = {key for key, enabled in (enabled_by_channel or {}).items() if not enabled}
 
     def permits(self, identity):
         with self.lock:
             return identity not in self.disabled
+
+    def permits_command(self, identity, method, params):
+        namespace = method.split(".")[0].lower()
+        component = f"{namespace}:{params['id']}" if "id" in params else None
+        with self.lock:
+            return identity not in self.disabled and (identity, component) not in self.disabled_channels

@@ -103,3 +103,21 @@ class CommunicationTests(unittest.TestCase):
         with patch('plugin.Worker') as factory:
             self.plugin._handle('bonjour', self.host.address, 'shelly-unit')
         factory.assert_called_once()
+
+
+    def test_already_queued_control_is_cancelled_when_only_its_channel_stops(self):
+        from shelly.worker import Worker
+        relay = self.host.devices[1]
+        self.plugin.deviceStopComm(relay)
+        self.plugin._handle(*self.plugin.events.get_nowait())
+        self.assertTrue(self.plugin.communication.permits('shelly-unit'))  # Input sibling is enabled.
+        events = []
+        worker = Worker(self.host.address, lambda *args: events.append(args), expected_id='shelly-unit',
+                        permitted_command=self.plugin.communication.permits_command)
+        session = Mock()
+        worker._execute(session, 'Switch.Set', {'id': 0, 'on': True})
+        session.call.assert_not_called()
+        self.assertEqual(events[0][0], 'command_cancelled')
+        session.call.return_value = {'state': False}
+        worker._execute(session, 'Input.GetStatus', {'id': 0})
+        session.call.assert_called_once_with('Input.GetStatus', {'id': 0})

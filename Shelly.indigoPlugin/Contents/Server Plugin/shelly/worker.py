@@ -28,11 +28,12 @@ class IdentityChanged(RpcError):
 
 class Worker(threading.Thread):
     def __init__(self, address, emit, password="", expected_id=None, connector=None,
-                 poll_interval=15, config_interval=60, rpc_timeout=8, exclude_id=None, permitted=None):
+                 poll_interval=15, config_interval=60, rpc_timeout=8, exclude_id=None, permitted=None, permitted_command=None):
         super().__init__(name=f"Shelly-{address}", daemon=True)
         self.address, self.emit, self.password = address, emit, password
         self.expected_id, self.connector = expected_id, connector
         self.exclude_id, self.permitted = exclude_id, permitted
+        self.permitted_command = permitted_command
         self.poll_interval, self.config_interval, self.rpc_timeout = poll_interval, config_interval, rpc_timeout
         self.commands = queue.Queue(maxsize=32)
         self.stopped = threading.Event()
@@ -236,7 +237,15 @@ class Worker(threading.Thread):
         self.emit("status", self.address, self._enrich({f"{namespace.lower()}:{index}": status}))
         return status
 
+    def _command_allowed(self, method, params):
+        if self.permitted_command is None or self.permitted_command(self.expected_id, method, params):
+            return True
+        self.emit("command_cancelled", self.address, method)
+        return False
+
     def _execute(self, session, method, params):
+        if not self._command_allowed(method, params):
+            return
         if method == "Shelly.GetStatus":
             self._reconcile(session)
             return
@@ -250,11 +259,14 @@ class Worker(threading.Thread):
             method, params = "Light.Set", {"id": params["id"], "on": target > 0}
             if target > 0:
                 params["brightness"] = target
+        if not self._command_allowed(method, params):
+            return  # A relative read may have overlapped the stop callback.
         result = session.call(method, params)
         namespace = method.split(".")[0]
         if namespace in ("Light", "Switch") and method.endswith((".Set", ".Toggle")):
             # Targeted verification also works when a firmware omits a notification.
-            self._component_status(session, namespace, params["id"])
+            if self.permitted_command is None or self.permitted_command(self.expected_id, method, params):
+                self._component_status(session, namespace, params["id"])
         elif method.endswith(".GetStatus") and isinstance(result, dict):
             self.emit("status", self.address, self._enrich({f"{namespace.lower()}:{params['id']}": result}))
 

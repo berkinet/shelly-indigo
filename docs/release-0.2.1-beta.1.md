@@ -11,7 +11,9 @@ timeout cannot continue producing warnings. Startup, Bonjour discovery, explicit
 hosts, password saves and recovery paths respect that state.
 
 If another channel on the same Shelly remains enabled, its shared connection stays
-active. Outage warnings identify the active Indigo channels so the reason is clear.
+active. Queued controls for the stopped channel are cancelled without issuing
+hardware commands, including a stop that overlaps a relative-brightness read.
+Outage warnings identify the active Indigo channels so the reason is clear.
 Discovery continues for other and unassigned units. A new endpoint may receive one
 public identity query to recognize a disabled unit, then stops before authentication,
 polling or control. Paused channel choices remain available offline.

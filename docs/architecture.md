@@ -72,7 +72,9 @@ into the new run.
 ## Communication enable/disable
 
 `deviceStopComm` and `deviceStartComm` enqueue lifecycle changes for the owner loop.
-Stopped channel IDs protect against old IOM copies still showing enabled. Disabling
+Stopped channel IDs protect against old IOM copies still showing enabled. A
+locked component policy cancels already-queued actions for stopped channels while
+leaving enabled siblings' controls and the shared transport working. Disabling
 the last channel fences/stops the shared worker and preserves offline selector
 entries. Disabling one channel leaves any enabled sibling's worker intact; its
 outage warning identifies the active Indigo channels.
