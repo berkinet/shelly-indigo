@@ -1,6 +1,7 @@
 """Indigo adapter. Network workers never call Indigo APIs directly."""
 from pathlib import Path
 import importlib
+import logging
 import queue
 import sys
 import threading
@@ -33,8 +34,17 @@ class Plugin(indigo.PluginBase):
         self.reported_binding_errors = {}
         self.button_triggers = {}
         self.trigger_lock = threading.Lock()
+        self.connection_preferences = {key: pluginPrefs.get(key, default) for key, default in
+                                       (("discovery", True), ("hosts", ""), ("password", ""))}
+
+    def _configure_logging(self, level):
+        # Keep detailed diagnostics in the plugin file independently of the UI.
+        self.logger.setLevel(logging.DEBUG)
+        self.plugin_file_handler.setLevel(logging.DEBUG)
+        self.indigo_log_handler.setLevel(logging.DEBUG if level == "DEBUG" else logging.INFO)
 
     def startup(self):
+        self._configure_logging(self.pluginPrefs.get("logLevel", "INFO"))
         for module in ("zeroconf", "ifaddr", "websocket"):
             try:
                 importlib.import_module(module)
@@ -61,7 +71,7 @@ class Plugin(indigo.PluginBase):
         if address not in self.workers:
             worker = Worker(address, self._emit, self.pluginPrefs.get("password", ""), expected_id)
             self.workers[address] = worker
-            self.logger.info("Discovered Shelly endpoint %s", address)
+            self.logger.debug("Discovered Shelly endpoint %s", address)
             worker.start()
 
     def deviceStartComm(self, dev):
@@ -93,7 +103,7 @@ class Plugin(indigo.PluginBase):
             if self.pluginPrefs.get("discovery", True):
                 try:
                     discovery = Discovery(lambda address: self._emit("discover", address))
-                    self.logger.info("Shelly discovery started (Gen2–Gen4 switches and inputs)")
+                    self.logger.debug("Shelly discovery started (Gen2–Gen4 switches and inputs)")
                 except Exception as exc:
                     self.logger.error("Bonjour discovery unavailable: %s; explicit hosts remain active", exc)
             while True:
@@ -177,7 +187,7 @@ class Plugin(indigo.PluginBase):
                     self.workers.pop(old_address).stop()
                     del self.info[old_address]
             self.info[address] = info
-            self.logger.info("Querying %s (Gen%s)", info["id"], info["gen"])
+            self.logger.debug("Querying %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
             with self.catalog_lock:
                 self.catalog = {key: entry for key, entry in self.catalog.items()
@@ -517,6 +527,8 @@ class Plugin(indigo.PluginBase):
             self._emit("refresh", dev.pluginProps["host"])
 
     def validatePrefsConfigUi(self, valuesDict):
+        if valuesDict.get("logLevel", "INFO") not in ("INFO", "DEBUG"):
+            return False, valuesDict, indigo.Dict({"logLevel": "Choose Info or Debug."})
         try:
             for host in valuesDict.get("hosts", "").split(","):
                 if host.strip():
@@ -527,4 +539,7 @@ class Plugin(indigo.PluginBase):
 
     def closedPrefsConfigUi(self, valuesDict, userCancelled):
         if not userCancelled:
-            self.logger.info("Restart the Shelly plugin to apply connection preferences")
+            self._configure_logging(valuesDict.get("logLevel", "INFO"))
+            if any(valuesDict.get(key, original) != original
+                   for key, original in self.connection_preferences.items()):
+                self.logger.info("Restart the Shelly plugin to apply connection preferences")

@@ -12,7 +12,15 @@
     <Label>Shared device password:</Label>
     <Description>Leave blank for unprotected Shelly devices. This is the local admin password, not your Shelly cloud login.</Description>
   </Field>
+  <Field id="logLevel" type="menu" defaultValue="INFO">
+    <Label>Event Log level:</Label>
+    <List>
+      <Option value="INFO">Info</Option>
+      <Option value="DEBUG">Debug</Option>
+    </List>
+    <Description>Info shows normal activity, warnings and errors. Debug also shows discovery and query messages. Applies immediately; the plugin log file always includes Debug.</Description>
+  </Field>
   <Field id="notice" type="label">
-    <Label>Alpha: switches, binary/button inputs and switch metering. Restart the plugin after changing preferences.</Label>
+    <Label>Alpha: switches, binary/button inputs and switch metering. Restart after changing connection preferences. Log level changes apply immediately.</Label>
   </Field>
 </PluginConfig>

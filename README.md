@@ -46,7 +46,7 @@ can be specified when multicast does not cross subnets.
 3. In the plugin preferences, enable discovery and enter the shared Shelly admin
    password if required. Optional additional hosts are comma-separated hostnames
    or IP addresses, with optional ports.
-4. Restart the plugin after changing preferences. Discovery runs continuously
+4. Restart the plugin after changing connection preferences. Discovery runs continuously
    and fills selectors as devices connect; it does not create Indigo devices.
 5. Choose **Shelly → Create Indigo Devices…** from the plugin menu, select one
    Shelly or all discovered Shellys, choose switches and/or inputs, then click
@@ -162,6 +162,17 @@ samples and notifications buffered during connection setup update input state
 without firing this event. It uses the existing input device; no additional
 Indigo device is created. This feature has not been published in a release yet.
 
+## Logging (unreleased, source build 0.1.9)
+
+In **Plugins → Shelly → Configure…**, choose **Info** (the default) or **Debug**
+for the **Event Log level**. Saving applies the change immediately; cancelling
+leaves the level unchanged. Connection preference changes still need a restart.
+
+Info shows normal activity, including explicit device creation, plus warnings
+and errors. Debug also shows discovery startup, discovered endpoints and device
+queries. The plugin's separate log file always includes Debug messages, regardless
+of the Event Log setting. This setting is not yet in a published release.
+
 ## Troubleshooting discovery
 
 Gen2–Gen4 discovery is implemented. Gen1 discovery is still planned.
@@ -174,7 +185,7 @@ devices. From v0.1.2, dependencies are included in the checked-in bundle as well
 as the release asset. Install the complete current bundle to replace an older
 incomplete installation. Startup now reports the missing library explicitly.
 
-After installation and restart, look for `Shelly discovery started` in the Indigo
+With the Event Log level set to **Debug**, after installation and restart look for `Shelly discovery started` in the Indigo
 Event Log. That confirms the browser started. A `Querying ...` message confirms
 successful device-information and status reads; it does not mean an Indigo device
 was created. `Created ...` messages appear when the explicit creation command adds

@@ -53,7 +53,11 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   are discarded at disconnect and are never automatically replayed.
 - Optional shared admin password with SHA-256 RPC challenge authentication.
   Passwords stay in Indigo preferences and are never logged or committed.
-- Preference changes require a plugin restart.
+- Connection preference changes require a plugin restart. Source build 0.1.9
+  (unreleased) adds an Info/Debug Event Log preference that applies immediately.
+  Discovery startup, endpoint and query messages use Debug. The plugin file
+  handler always retains Debug diagnostics; warnings and errors remain visible
+  at both selectable Event Log levels.
 - The repository's plugin bundle includes unmodified portable dependencies.
   Source installation and release installation follow the same dependency path;
   startup checks for missing libraries before starting network workers.

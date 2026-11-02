@@ -38,6 +38,8 @@ class Base:
     def __init__(self, unused_id, unused_name, unused_version, prefs):
         self.pluginPrefs = prefs
         self.logger = logging.getLogger('bundle-test')
+        self.indigo_log_handler = logging.NullHandler()
+        self.plugin_file_handler = logging.NullHandler()
 sys.modules['indigo'] = types.SimpleNamespace(PluginBase=Base)
 namespace = {'__name__': 'indigo_plugin_exec'}
 source = (server_plugin / 'plugin.py').read_text()

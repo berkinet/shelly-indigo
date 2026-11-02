@@ -1,5 +1,6 @@
 import importlib
 import logging
+from logging.handlers import BufferingHandler
 import sys
 import types
 import unittest
@@ -58,6 +59,9 @@ class Base:
     def __init__(self, unused_id, unused_name, unused_version, prefs):
         self.pluginPrefs = prefs
         self.logger = logging.getLogger('test-plugin')
+        self.indigo_log_handler = BufferingHandler(1000)
+        self.plugin_file_handler = BufferingHandler(1000)
+        self.logger.handlers = [self.indigo_log_handler, self.plugin_file_handler]
 
 
 class IndigoTests(unittest.TestCase):
@@ -596,3 +600,52 @@ class IndigoTests(unittest.TestCase):
         with self.assertLogs('test-plugin', level='ERROR'):
             self._press_event()
         self.assertEqual([call.args[0] for call in execute.call_args_list], [101, 102])
+
+    def test_logging_defaults_and_live_preferences_route_discovery_messages(self):
+        self.plugin.startup()
+        event_log = self.plugin.indigo_log_handler.buffer
+        file_log = self.plugin.plugin_file_handler.buffer
+        for level in ('INFO', 'DEBUG', 'INFO'):
+            self.plugin.closedPrefsConfigUi({'logLevel': level}, False)
+            event_log.clear()
+            file_log.clear()
+            with patch.object(sys.modules['plugin'], 'Worker'):
+                self.plugin.workers.clear()
+                self.plugin._connect(self.address)
+            self.plugin._handle('ready', self.address, (self.info, self.status))
+            self.plugin.logger.warning('A device is unavailable')
+            self.plugin.logger.error('An operation failed')
+            self.plugin._handle('create_devices', '', {'includeSwitches': True})
+            visible = [record.getMessage() for record in event_log]
+            detailed = [record.getMessage() for record in file_log]
+            for prefix in ('Discovered Shelly endpoint', 'Querying'):
+                self.assertEqual(any(message.startswith(prefix) for message in visible), level == 'DEBUG')
+                self.assertTrue(any(message.startswith(prefix) for message in detailed))
+            self.assertTrue(any(message.startswith('Create Indigo devices completed') for message in visible))
+            self.assertIn('A device is unavailable', visible)
+            self.assertIn('An operation failed', visible)
+            self.assertFalse(any('Restart' in message for message in visible))
+        self.assertEqual(self.plugin.indigo_log_handler.level, logging.INFO)
+
+    def test_logging_startup_uses_saved_level_and_cancel_preserves_it(self):
+        for saved, expected in ((None, logging.INFO), ('DEBUG', logging.DEBUG), ('invalid', logging.INFO)):
+            self.plugin.pluginPrefs = {} if saved is None else {'logLevel': saved}
+            self.plugin.startup()
+            self.assertEqual(self.plugin.indigo_log_handler.level, expected)
+            self.assertEqual(self.plugin.plugin_file_handler.level, logging.DEBUG)
+            self.plugin.closedPrefsConfigUi({'logLevel': 'DEBUG' if expected == logging.INFO else 'INFO'}, True)
+            self.assertEqual(self.plugin.indigo_log_handler.level, expected)
+        self.plugin.closedPrefsConfigUi({'logLevel': 'INFO', 'hosts': '192.0.2.3'}, False)
+        self.assertTrue(any('Restart' in record.getMessage() for record in self.plugin.indigo_log_handler.buffer))
+
+    def test_logging_preference_xml_and_validation(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/PluginConfig.xml'
+        field = ElementTree.parse(xml).find("Field[@id='logLevel']")
+        self.assertEqual(field.get('defaultValue'), 'INFO')
+        choices = [option.get('value') for option in field.findall('List/Option')]
+        self.assertEqual(choices, ['INFO', 'DEBUG'])
+        for level in choices:
+            self.assertTrue(self.plugin.validatePrefsConfigUi({'logLevel': level})[0])
+        self.assertFalse(self.plugin.validatePrefsConfigUi({'logLevel': 'INVALID'})[0])
