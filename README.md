@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.8 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.8-alpha.1/Shelly-0.1.8.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.10 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.10-alpha.1/Shelly-0.1.10.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -24,7 +24,7 @@ See [hardware validation](docs/hardware-validation.md) for the current evidence.
 - Local Shelly-assigned names prefix internal IDs in selectors and newly created
   Indigo names when available.
 - Indigo on/off/toggle control; WebSocket state notifications.
-- Unreleased source build 0.1.10 adds native Shelly Dimmer devices, brightness
+- Version 0.1.10 adds native Shelly Dimmer devices, brightness
   control and metering for Gen2–Gen4 `light:*` channels.
 - Momentary button input tracking: ON while held, OFF when released, independent
   of the relay output.
@@ -73,9 +73,9 @@ if discovery completed after opening the dialog.
 
 Discovery is always separate from creation. **Create Indigo Devices…** performs a
 one-time creation of missing channels for the chosen Shelly devices and channel
-types. From source build 0.1.10 (unreleased), the physical-device selector also
+types. From version 0.1.10, the physical-device selector also
 shows discovered units that have no supported channels, labeled **no supported
-channels**. Dimmer `light:*` outputs are now supported by the source build.
+channels**. Dimmer `light:*` outputs are now supported.
 If discovery finishes while the creation
 dialog is open, click **Refresh discovered devices** to reload its list without
 closing the dialog. Refresh preserves your choices and does not create devices.
@@ -128,7 +128,7 @@ existing devices with a message explaining the required type. State definitions
 are refreshed for switches, dimmers and inputs on startup and when needed before an
 update; existing valid device IDs and names are preserved.
 
-## Dimmers (unreleased, source build 0.1.10)
+## Dimmers (from 0.1.10)
 
 Choose **Shelly Dimmer** in New Device to select an unassigned `light:*` output.
 The existing Gen3 dimmer and Gen2 Pro dimmer use this component type. Alternatively,
@@ -185,7 +185,7 @@ See [Shelly's Input API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAnd
 and [Modbus API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Modbus/)
 for the status and input-register semantics.
 
-### Button Pressed event (unreleased, source build 0.1.10)
+### Button Pressed event (from 0.1.10)
 
 Create an Indigo trigger, choose the **Shelly → Button Pressed** event, then select
 an existing **Shelly Input** configured in button mode. Add a **Toggle** action for
@@ -197,9 +197,9 @@ The event fires once for each live physical press, independently of the relay.
 Release and click/long-press classifications do not fire it. Startup/reconnect
 samples and notifications buffered during connection setup update input state
 without firing this event. It uses the existing input device; no additional
-Indigo device is created. This feature has not been published in a release yet.
+Indigo device is created. Available in 0.1.10 and later.
 
-## Logging (unreleased, source build 0.1.10)
+## Logging (from 0.1.10)
 
 In **Plugins → Shelly → Configure…**, choose **Info** (the default) or **Debug**
 for the **Event Log level**. Saving applies the change immediately; cancelling
@@ -220,7 +220,7 @@ or unchanged reconnects. A changed or resolved problem updates that suppression.
 Wi-Fi, Cloud and other services appear in the Debug summary without individual
 unsupported-device warnings. All queried devices remain in the discovery menu.
 The plugin's separate log file always includes Debug messages, regardless
-of the Event Log setting. This setting is not yet in a published release.
+of the Event Log setting. Available in 0.1.10 and later.
 
 ## Troubleshooting discovery
 

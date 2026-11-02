@@ -24,13 +24,13 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   explicit one-time plugin menu command, scoped by physical unit and channel
   type, or an individual New Device save. Legacy autoCreate preferences have no
   effect. Existing mapped devices keep receiving updates.
-- Source build 0.1.9 (unreleased) keeps a physical discovery snapshot separate
+- Version 0.1.10 keeps a physical discovery snapshot separate
   from the supported-channel catalog. The creation menu includes online units
   without supported channels and labels them accordingly; it does not create
   unsupported channels. Names, reconnects and address changes update that snapshot.
   The creation dialog has an explicit refresh button with dynamic list reload;
   Debug records the exact menu choices supplied to Indigo for UI diagnosis.
-- Source build 0.1.10 (unreleased) maps `light:*` to native Indigo dimmers with
+- Version 0.1.10 maps `light:*` to native Indigo dimmers with
   brightness, On/Off/Toggle, bounded relative adjustments and optional metering.
   An off output displays 0% without discarding Shelly's retained turn-on level.
   Native universal status/energy-update actions request a fresh status read.
@@ -56,7 +56,7 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   for quick transitions in one frame, and older timestamped events are ignored.
   Connection-setup notifications are buffered until identity/inventory is ready;
   a later Modbus sample supersedes earlier buffered button events.
-- Source build 0.1.9 (unreleased) adds a native Button Pressed event bound to an
+- Version 0.1.10 adds a native Button Pressed event bound to an
   existing Indigo button-input ID. Only accepted live btn_down notifications
   execute enabled matching triggers, with Indigo conditions honored. Repeated
   notifications, initial reads and buffered setup events do not execute triggers.
@@ -67,8 +67,7 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   are discarded at disconnect and are never automatically replayed.
 - Optional shared admin password with SHA-256 RPC challenge authentication.
   Passwords stay in Indigo preferences and are never logged or committed.
-- Connection preference changes require a plugin restart. Source build 0.1.9
-  (unreleased) adds an Info/Debug Event Log preference that applies immediately.
+- Connection preference changes require a plugin restart. Version 0.1.10 adds an Info/Debug Event Log preference that applies immediately.
   Discovery startup, endpoint and query messages use Debug. The plugin file
   handler always retains Debug diagnostics; warnings and errors remain visible
   at both selectable Event Log levels.
