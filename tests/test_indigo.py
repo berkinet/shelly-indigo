@@ -769,3 +769,36 @@ class IndigoTests(unittest.TestCase):
         self.assertEqual(len(warnings), 1)
         self.assertIn('no supported switch or input channels reported', warnings[0])
         self.assertIn('empty-unit', dict(self.plugin.getDiscoveredShellyDevices()))
+
+    def test_creation_dialog_refresh_loads_later_discovery_and_preserves_choices(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/MenuItems.xml'
+        ui = ElementTree.parse(xml).find('MenuItem/ConfigUI')
+        field = ui.find("Field[@id='shellyId']/List")
+        self.assertEqual(field.get('dynamicReload'), 'true')
+        generate = getattr(self.plugin, field.get('method'))
+        refresh = getattr(self.plugin, ui.findtext("Field[@id='refreshDiscoveredDevices']/CallbackMethod"))
+        self.plugin.startup()
+        self.plugin.catalog.clear()
+        self.plugin.discovered_devices.clear()
+        self.devices.clear()
+        self.assertEqual(generate(), [('_all_', 'All discovered Shelly devices')])
+        values = {'shellyId': '_all_', 'includeSwitches': False, 'includeInputs': True}
+        info = {'id': 'test-dimmer', 'name': 'Séjour chandelier', 'gen': 3}
+        status = {'light:0': {'output': False},
+                  'input:0': {'state': None, '_inputType': 'button', '_enabled': True},
+                  'input:1': {'state': False}}
+        self.plugin._handle('ready', '192.0.2.50:80', (info, status))
+        saved = dict(values)
+        returned = refresh(values, 'createDiscoveredDevices', 0)
+        self.assertEqual(returned, saved)
+        records = self.plugin.plugin_file_handler.buffer
+        records.clear()
+        options = generate(valuesDict=returned)
+        self.assertEqual(dict(options)['test-dimmer'], 'Séjour chandelier (test-dimmer)')
+        logs = [record.getMessage() for record in records]
+        self.assertTrue(any('Create Indigo Devices menu choices:' in message and
+                            'Séjour chandelier (test-dimmer)' in message for message in logs))
+        self.assertEqual(self.devices, {})
+        self.assertTrue(self.plugin.events.empty())

@@ -73,7 +73,11 @@ one-time creation of missing channels for the chosen Shelly devices and channel
 types. From source build 0.1.9 (unreleased), the physical-device selector also
 shows discovered units that have no supported channels, labeled **no supported
 channels**. Discovery can find a dimmer even though this alpha cannot yet create
-its light output as an Indigo dimmer. Rerun it whenever you want to add more channels. Previously stored
+its light output as an Indigo dimmer. If discovery finishes while the creation
+dialog is open, click **Refresh discovered devices** to reload its list without
+closing the dialog. Refresh preserves your choices and does not create devices.
+Debug logging records the exact ID/name choices supplied to Indigo whenever the
+list is generated. Rerun the creation command whenever you want to add more channels. Previously stored
 `autoCreate` preferences are ignored from v0.1.6; restarts, new discoveries and
 button events cannot create additional devices implicitly. Existing Indigo
 devices continue receiving updates, and their names and IDs are preserved.

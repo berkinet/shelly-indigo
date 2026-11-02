@@ -439,7 +439,15 @@ class Plugin(indigo.PluginBase):
             devices = {identity: self._device_label(entry) +
                        (" [no supported channels]" if identity not in supported else "")
                        for identity, entry in self.discovered_devices.items() if entry["online"]}
-        return [(ALL_DEVICES, "All discovered Shelly devices")] + sorted(devices.items(), key=lambda item: item[1].casefold())
+        options = [(ALL_DEVICES, "All discovered Shelly devices")] + sorted(
+            devices.items(), key=lambda item: item[1].casefold())
+        self.logger.debug("Create Indigo Devices menu choices: %s", options)
+        return options
+
+    def refreshDiscoveredDevices(self, valuesDict, typeId="", targetId=0):
+        # Indigo reloads dynamic lists after this button callback returns. Discovery
+        # continues independently; refresh never creates devices or operates outputs.
+        return valuesDict
 
     def createDiscoveredDevices(self, valuesDict=None, typeId=""):
         values = valuesDict or {}

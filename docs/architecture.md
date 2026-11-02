@@ -28,6 +28,8 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   from the supported-channel catalog. The creation menu includes online units
   without supported channels and labels them accordingly; it does not create
   unsupported channels. Names, reconnects and address changes update that snapshot.
+  The creation dialog has an explicit refresh button with dynamic list reload;
+  Debug records the exact menu choices supplied to Indigo for UI diagnosis.
 - Device-local names are read through Sys.GetConfig.device.name at connection
   and during reconciliation. They prefix internal IDs in selectors and new
   Indigo device names. Existing Indigo names are not overwritten. App-only cloud

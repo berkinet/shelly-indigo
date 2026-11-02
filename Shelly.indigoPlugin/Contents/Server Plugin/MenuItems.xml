@@ -7,7 +7,12 @@
     <ConfigUI>
       <Field id="shellyId" type="menu" defaultValue="_all_">
         <Label>Shelly device:</Label>
-        <List class="self" method="getDiscoveredShellyDevices" />
+        <List class="self" method="getDiscoveredShellyDevices" dynamicReload="true" />
+      </Field>
+      <Field id="refreshDiscoveredDevices" type="button">
+        <Label />
+        <Title>Refresh discovered devices</Title>
+        <CallbackMethod>refreshDiscoveredDevices</CallbackMethod>
       </Field>
       <Field id="includeSwitches" type="checkbox" defaultValue="true">
         <Label>Switches:</Label>
