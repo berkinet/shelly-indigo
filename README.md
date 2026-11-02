@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.4 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.4-alpha.1/Shelly-0.1.4.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.5 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.5-alpha.1/Shelly-0.1.5.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -73,6 +73,20 @@ remain configured and continue receiving updates. The selector currently offers
 switches, binary inputs and button inputs; dimmers and other unsupported
 components are omitted.
 
+### Device type and channel must match
+
+Use **Shelly Switch** for `switch:0` (relay and metering) and **Shelly Input** for
+`input:0` (physical input/button). Changing a relay's Indigo type to Shelly Input
+can leave its old relay binding behind. If this happened in an older alpha,
+restore that device's type to Shelly Switch and select its switch channel; use
+the separately created input device for the button.
+
+From v0.1.5 the plugin clears incompatible selections when changing device type,
+rejects invalid saved bindings, and blocks updates/control for inconsistent
+existing devices with a message explaining the required type. State definitions
+are refreshed for both switches and inputs on startup and when needed before an
+update; existing valid device IDs and names are preserved.
+
 ## Momentary buttons
 
 For a Shelly configured with Input type **Button**, use its separate `input:0`
@@ -124,7 +138,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.4.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.5.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run

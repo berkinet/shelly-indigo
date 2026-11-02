@@ -15,15 +15,25 @@ class Device:
         self.name = kwargs['name']
         self.enabled = True
         self.states = {}
+        self.stateListOrDisplayStateIdChanged()
         self.history = []
         self.error = None
     def updateStatesOnServer(self, states):
+        assert all(state['key'] in self.states for state in states), 'Undefined Indigo state update'
         self.history.append({state['key']: state['value'] for state in states})
         self.states.update({state['key']: state['value'] for state in states})
     def updateStateOnServer(self, key, value):
+        assert key in self.states, f'Undefined Indigo state: {key}'
         self.states[key] = value
     def stateListOrDisplayStateIdChanged(self):
-        pass
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/Devices.xml'
+        definition = ElementTree.parse(xml).find(f"Device[@id='{self.deviceTypeId}']/States")
+        defaults = {'Boolean': False, 'Number': 0.0, 'String': ''}
+        registered = {state.get('id'): defaults[state.findtext('ValueType')] for state in definition}
+        registered['onOffState'] = False
+        self.states = {key: self.states.get(key, default) for key, default in registered.items()}
     def setErrorStateOnServer(self, error):
         self.error = error
     def replacePluginPropsOnServer(self, props):
@@ -258,3 +268,66 @@ class IndigoTests(unittest.TestCase):
         self.plugin._handle('ready', self.address, (self.info, status))
         self.assertFalse(button.states['stateKnown'])
         self.assertIn('Waiting', button.error)
+
+    def test_switch_bound_to_input_device_cannot_receive_relay_or_meter_states(self):
+        dev = self.devices[1]
+        dev.deviceTypeId = 'shellyInput'
+        dev.stateListOrDisplayStateIdChanged()
+        before = dev.states['onOffState']
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('status', self.address, {'switch:0': {
+                'output': not before, 'apower': 20, 'voltage': 230, 'current': 0.2, 'aenergy': {'total': 50}}})
+        self.assertEqual(dev.states['onOffState'], before)
+        self.assertNotIn('powerWatts', dev.states)
+        self.assertIn('Shelly Switch', dev.error)
+        self.assertEqual(dev.pluginProps['component'], 'switch:0')
+        self.assertEqual(len(self.devices), 2)
+
+    def test_type_change_clears_old_binding_and_cannot_reuse_wrong_saved_channel(self):
+        dev = self.devices[1]
+        dev.deviceTypeId = 'shellyInput'
+        dev.stateListOrDisplayStateIdChanged()
+        values, _ = self.plugin.getDeviceConfigUiValues(dev.pluginProps, 'shellyInput', dev.id)
+        self.assertEqual(values['selectedChannel'], '')
+        self.assertEqual(values['host'], '')
+        self.assertNotIn('shelly-unit/switch:0', dict(self.plugin.getShellyChannels(typeId='shellyInput', targetId=dev.id)))
+        result = self.plugin.validateDeviceConfigUi({'selectedChannel': 'shelly-unit/switch:0'}, 'shellyInput', dev.id)
+        self.assertFalse(result[0])
+        # Correct input already exists, so conversion cannot silently duplicate it.
+        result = self.plugin.validateDeviceConfigUi({'selectedChannel': 'shelly-unit/input:0'}, 'shellyInput', dev.id)
+        self.assertFalse(result[0])
+        self.assertIn('already configured', result[2]['selectedChannel'])
+
+    def test_startup_refreshes_switch_meter_state_definitions(self):
+        dev = self.devices[1]
+        for key in ('powerWatts', 'voltage', 'currentAmps', 'energyWh'):
+            dev.states.pop(key)
+        self.plugin.deviceStartComm(dev)
+        self.assertTrue({'powerWatts', 'voltage', 'currentAmps', 'energyWh'} <= dev.states.keys())
+        self.plugin._handle('status', self.address, {'switch:0': {
+            'apower': 20, 'voltage': 230, 'current': 0.2, 'aenergy': {'total': 50}}})
+        self.assertEqual(dev.states['powerWatts'], 20)
+        self.assertEqual(dev.states['energyWh'], 50)
+
+    def test_wrong_component_binding_cannot_send_relay_control(self):
+        dev = self.devices[1]
+        dev.pluginProps['component'] = 'input:0'
+        worker = Mock()
+        self.plugin.workers[self.address] = worker
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('command', '', (dev.id, 'on'))
+        worker.command.assert_not_called()
+        self.assertIn('Shelly Input', dev.error)
+
+    def test_stale_meter_states_refresh_before_next_update_without_recreating_device(self):
+        dev = self.devices[1]
+        identity, name = dev.id, dev.name
+        for key in ('powerWatts', 'voltage', 'currentAmps', 'energyWh'):
+            dev.states.pop(key)
+        self.plugin._handle('status', self.address, {'switch:0': {
+            'apower': 12.5, 'voltage': 230, 'current': 0.1, 'aenergy': {'total': 90}}})
+        self.assertEqual((dev.id, dev.name), (identity, name))
+        self.assertEqual(len(self.devices), 2)
+        self.assertEqual(dev.states['powerWatts'], 12.5)
+        self.assertEqual(dev.states['energyWh'], 90)
+        self.assertIsNone(dev.error)

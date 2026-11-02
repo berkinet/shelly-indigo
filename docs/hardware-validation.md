@@ -34,3 +34,17 @@ or physical outputs were changed.
 Press/release transitions have been validated with a real localhost WebSocket
 simulator and Indigo API test double. Physical press/release operation through
 the installed Indigo plugin still needs the owner's confirmation.
+
+## 2 November 2026 — channel/type mismatch diagnosis, development version 0.1.5
+
+A read-only Indigo query confirmed that a device named as a switch channel had
+Indigo type `shellyInput` while retaining a `switch:0` component binding. Its
+registered states were the input state set, so relay metering updates caused
+undefined-state errors. No user device was modified during diagnosis.
+
+Version 0.1.5 prevents incompatible saved-channel fallback, blocks updates and
+commands for mismatched bindings, and refreshes static state definitions for
+both supported Indigo types. Regression tests use a stricter Indigo test double
+that rejects any update to a state absent from the actual Devices.xml schema.
+Already-inconsistent devices require correcting their type/channel in Indigo;
+the plugin does not delete or recreate them as a repair.

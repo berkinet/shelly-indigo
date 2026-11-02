@@ -26,6 +26,7 @@ class Plugin(indigo.PluginBase):
         self.inventory = {}
         self.catalog = {}
         self.catalog_lock = threading.Lock()
+        self.reported_binding_errors = {}
 
     def startup(self):
         for module in ("zeroconf", "ifaddr", "websocket"):
@@ -60,8 +61,10 @@ class Plugin(indigo.PluginBase):
     def deviceStartComm(self, dev):
         address = dev.pluginProps.get("host")
         if address:
-            if dev.deviceTypeId == "shellyInput":
-                dev.stateListOrDisplayStateIdChanged()
+            # Refresh static XML states for both device types after upgrades.
+            dev.stateListOrDisplayStateIdChanged()
+            if self._block_invalid_binding(dev):
+                return
             dev.setErrorStateOnServer("Connecting")
             self._emit("discover", address, dev.pluginProps.get("shellyId"))
             self._emit("refresh", address)
@@ -107,7 +110,9 @@ class Plugin(indigo.PluginBase):
         elif kind == "command":
             dev_id, action = payload
             dev = indigo.devices[dev_id]
-            if not dev.enabled or dev.deviceTypeId != "shellySwitch":
+            if not dev.enabled or self._block_invalid_binding(dev):
+                return
+            if dev.deviceTypeId != "shellySwitch":
                 return
             host = dev.pluginProps["host"]
             worker = self.workers.get(host)
@@ -155,6 +160,8 @@ class Plugin(indigo.PluginBase):
             self.logger.warning("Shelly %s unavailable: %s", address, payload)
             for dev in self._devices():
                 if dev.enabled and dev.pluginProps.get("host") == address:
+                    if self._block_invalid_binding(dev):
+                        continue
                     dev.updateStateOnServer("online", False)
                     if dev.deviceTypeId == "shellyInput":
                         dev.updateStateOnServer("stateKnown", False)
@@ -167,8 +174,13 @@ class Plugin(indigo.PluginBase):
 
     def _publish_channels(self, address, channels):
         info = self.info[address]
-        devices = {(dev.pluginProps.get("shellyId"), dev.pluginProps.get("component")): dev
-                   for dev in self._devices()}
+        devices = {}
+        for dev in self._devices():
+            key = (dev.pluginProps.get("shellyId"), dev.pluginProps.get("component"))
+            # Prefer a correctly typed device if an older installation contains
+            # both a valid binding and an inconsistent duplicate.
+            if key not in devices or self._expected_device_type(dev.pluginProps) == dev.deviceTypeId:
+                devices[key] = dev
         for channel in channels:
             key = (info["id"], channel.key)
             props = self._channel_properties(info, address, channel)
@@ -193,7 +205,7 @@ class Plugin(indigo.PluginBase):
                     props=props)
                 devices[key] = dev
                 self.logger.info("Created %s", dev.name)
-            if not dev.enabled:
+            if not dev.enabled or self._block_invalid_binding(dev):
                 continue
             if dev.pluginProps.get("host") != address:
                 props = dict(dev.pluginProps)
@@ -204,9 +216,39 @@ class Plugin(indigo.PluginBase):
             if channel.kind == "input":
                 states = {k: v for k, v in states.items() if k in ("onOffState", "stateKnown", "inputMode")}
             states["online"] = True
+            if any(key not in dev.states for key in states):
+                dev.stateListOrDisplayStateIdChanged()
+                dev = indigo.devices[dev.id]
+                if any(key not in dev.states for key in states):
+                    dev.setErrorStateOnServer("State definitions unavailable; restart the Shelly plugin")
+                    continue
             dev.updateStatesOnServer([{"key": k, "value": v} for k, v in states.items()])
             unknown = channel.kind == "input" and not states.get("stateKnown", False)
             dev.setErrorStateOnServer("Waiting for input press/release" if unknown else None)
+
+    @staticmethod
+    def _expected_device_type(props):
+        component = props.get("component", "")
+        if not isinstance(component, str):
+            return None
+        kind, separator, number = component.partition(":")
+        if not separator or not number.isdecimal():
+            return None
+        return {"switch": "shellySwitch", "input": "shellyInput"}.get(kind)
+
+    def _block_invalid_binding(self, dev):
+        expected = self._expected_device_type(dev.pluginProps)
+        if expected == dev.deviceTypeId and self._selection_key(dev.pluginProps):
+            self.reported_binding_errors.pop(dev.id, None)
+            return False
+        label = {"shellySwitch": "Shelly Switch", "shellyInput": "Shelly Input"}.get(expected)
+        message = (f"Channel {dev.pluginProps.get('component')} requires {label}; edit the device type or channel."
+                   if label else "Select a supported Shelly channel in the device configuration.")
+        dev.setErrorStateOnServer(message)
+        if self.reported_binding_errors.get(dev.id) != message:
+            self.logger.warning("%s: %s", dev.name, message)
+            self.reported_binding_errors[dev.id] = message
+        return True
 
     @staticmethod
     def _selection_key(props):
@@ -230,7 +272,8 @@ class Plugin(indigo.PluginBase):
     def _saved_channel(self, devId, typeId):
         if devId and int(devId) in indigo.devices:
             dev = indigo.devices[int(devId)]
-            if dev.deviceTypeId == typeId and self._selection_key(dev.pluginProps):
+            if (dev.deviceTypeId == typeId and self._selection_key(dev.pluginProps)
+                    and self._expected_device_type(dev.pluginProps) == typeId):
                 return dict(dev.pluginProps)
         return None
 
@@ -256,7 +299,13 @@ class Plugin(indigo.PluginBase):
 
     def getDeviceConfigUiValues(self, pluginProps, typeId, devId):
         values = indigo.Dict(pluginProps)
-        values["selectedChannel"] = self._selection_key(pluginProps)
+        if self._expected_device_type(pluginProps) == typeId:
+            values["selectedChannel"] = self._selection_key(pluginProps)
+        else:
+            # Changing the Indigo type must not carry an incompatible old binding
+            # through the offline-device fallback in validation.
+            values["selectedChannel"] = ""
+            self._fill_channel_selection(values, "", None)
         return values, indigo.Dict()
 
     def shellyChannelSelected(self, valuesDict, typeId, devId):
