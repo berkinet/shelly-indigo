@@ -14,7 +14,70 @@
         <CallbackMethod>refreshShellyChannels</CallbackMethod>
       </Field>
       <Field id="channelHelp" type="label">
-        <Label>Channels marked already configured have an Indigo device. Edit that device to avoid creating a duplicate.</Label>
+        <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
+      </Field>
+      <Field id="shellyId" type="textfield" readOnly="true">
+        <Label>Shelly ID:</Label>
+      </Field>
+      <Field id="component" type="textfield" readOnly="true">
+        <Label>Channel:</Label>
+      </Field>
+      <Field id="host" type="textfield" readOnly="true">
+        <Label>Host:</Label>
+      </Field>
+      <Field id="model" type="textfield" readOnly="true">
+        <Label>Model:</Label>
+      </Field>
+      <Field id="generation" type="textfield" readOnly="true">
+        <Label>Generation:</Label>
+      </Field>
+      <Field id="address" type="textfield" hidden="true">
+        <Label>Address:</Label>
+      </Field>
+    </ConfigUI>
+    <States>
+      <State id="online">
+        <ValueType>Boolean</ValueType>
+        <TriggerLabel>Online</TriggerLabel>
+        <ControlPageLabel>Online</ControlPageLabel>
+      </State>
+      <State id="powerWatts">
+        <ValueType>Number</ValueType>
+        <TriggerLabel>Power (W)</TriggerLabel>
+        <ControlPageLabel>Power (W)</ControlPageLabel>
+      </State>
+      <State id="voltage">
+        <ValueType>Number</ValueType>
+        <TriggerLabel>Voltage (V)</TriggerLabel>
+        <ControlPageLabel>Voltage (V)</ControlPageLabel>
+      </State>
+      <State id="currentAmps">
+        <ValueType>Number</ValueType>
+        <TriggerLabel>Current (A)</TriggerLabel>
+        <ControlPageLabel>Current (A)</ControlPageLabel>
+      </State>
+      <State id="energyWh">
+        <ValueType>Number</ValueType>
+        <TriggerLabel>Energy (Wh)</TriggerLabel>
+        <ControlPageLabel>Energy (Wh)</ControlPageLabel>
+      </State>
+    </States>
+  </Device>
+  <Device id="shellyDimmer" type="dimmer">
+    <Name>Shelly Dimmer</Name>
+    <ConfigUI>
+      <Field id="selectedChannel" type="menu" defaultValue="_none_">
+        <Label>Shelly channel:</Label>
+        <List class="self" method="getShellyChannels" dynamicReload="true" />
+        <CallbackMethod>shellyChannelSelected</CallbackMethod>
+      </Field>
+      <Field id="refreshChannels" type="button">
+        <Label />
+        <Title>Refresh discovered channels</Title>
+        <CallbackMethod>refreshShellyChannels</CallbackMethod>
+      </Field>
+      <Field id="channelHelp" type="label">
+        <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
       <Field id="shellyId" type="textfield" readOnly="true">
         <Label>Shelly ID:</Label>
@@ -77,7 +140,7 @@
         <CallbackMethod>refreshShellyChannels</CallbackMethod>
       </Field>
       <Field id="channelHelp" type="label">
-        <Label>Channels marked already configured have an Indigo device. Edit that device to avoid creating a duplicate.</Label>
+        <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
       <Field id="shellyId" type="textfield" readOnly="true">
         <Label>Shelly ID:</Label>

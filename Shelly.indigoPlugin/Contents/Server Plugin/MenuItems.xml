@@ -18,6 +18,10 @@
         <Label>Switches:</Label>
         <Description>Create missing relay/switch devices</Description>
       </Field>
+      <Field id="includeDimmers" type="checkbox" defaultValue="true">
+        <Label>Dimmers:</Label>
+        <Description>Create missing dimmable light output devices</Description>
+      </Field>
       <Field id="includeInputs" type="checkbox" defaultValue="false">
         <Label>Inputs:</Label>
         <Description>Create missing binary/button input devices</Description>

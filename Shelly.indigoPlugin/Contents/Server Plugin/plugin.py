@@ -81,7 +81,7 @@ class Plugin(indigo.PluginBase):
     def deviceStartComm(self, dev):
         address = dev.pluginProps.get("host")
         if address:
-            # Refresh static XML states for both device types after upgrades.
+            # Refresh static XML states for all device types after upgrades.
             dev.stateListOrDisplayStateIdChanged()
             if self._block_invalid_binding(dev):
                 return
@@ -107,7 +107,7 @@ class Plugin(indigo.PluginBase):
             if self.pluginPrefs.get("discovery", True):
                 try:
                     discovery = Discovery(lambda address: self._emit("discover", address))
-                    self.logger.debug("Shelly discovery started (Gen2–Gen4 switches and inputs)")
+                    self.logger.debug("Shelly discovery started (Gen2–Gen4 switches, dimmers and inputs)")
                 except Exception as exc:
                     self.logger.error("Bonjour discovery unavailable: %s; explicit hosts remain active", exc)
             while True:
@@ -143,6 +143,8 @@ class Plugin(indigo.PluginBase):
                 kinds.add("switch")
             if payload.get("includeInputs"):
                 kinds.add("input")
+            if payload.get("includeDimmers"):
+                kinds.add("light")
             target = payload.get("shellyId") or ALL_DEVICES
             for host, inventory in list(self.inventory.items()):
                 info = self.info.get(host)
@@ -167,20 +169,39 @@ class Plugin(indigo.PluginBase):
                         self.catalog[key] = {**entry, "shellyName": payload.get("name") or "",
                                              "label": self._channel_label(payload, entry["component"], address)}
         elif kind == "command":
-            dev_id, action = payload
+            dev_id, action, *values = payload
             dev = indigo.devices[dev_id]
             if not dev.enabled or self._block_invalid_binding(dev):
                 return
-            if dev.deviceTypeId != "shellySwitch":
+            if dev.deviceTypeId not in ("shellySwitch", "shellyDimmer"):
                 return
             host = dev.pluginProps["host"]
             worker = self.workers.get(host)
             if worker is None or self.info.get(host, {}).get("id") != dev.pluginProps["shellyId"]:
                 raise ConnectionError("Shelly is offline or its address now belongs to another device")
-            method = "Switch.Toggle" if action == "toggle" else "Switch.Set"
+            namespace = "Light" if dev.deviceTypeId == "shellyDimmer" else "Switch"
             params = {"id": int(dev.pluginProps["component"].split(":")[1])}
-            if action != "toggle":
-                params["on"] = action == "on"
+            if action in ("on", "off", "toggle"):
+                method = f"{namespace}.Toggle" if action == "toggle" else f"{namespace}.Set"
+                if action != "toggle":
+                    params["on"] = action == "on"
+            elif action in ("brightness", "brighten", "dim") and namespace == "Light":
+                value = values[0] if values else None
+                if (not isinstance(value, (int, float)) or isinstance(value, bool)
+                        or not 0 <= value <= 100):
+                    raise ValueError("Brightness must be a number from 0 to 100")
+                if action != "brightness":
+                    channel = self.inventory[host].channels[dev.pluginProps["component"]]
+                    current = channel.states().get("brightnessLevel")
+                    if current is None:
+                        raise ConnectionError("Dimmer brightness is not known; request status first")
+                    value = min(100, max(0, current + (value if action == "brighten" else -value)))
+                method = "Light.Set"
+                params["on"] = value > 0
+                if value > 0:
+                    params["brightness"] = value
+            else:
+                raise ValueError("Unsupported Shelly device action")
             worker.command(method, params)
         elif kind == "refresh":
             worker = self.workers.get(address)
@@ -285,7 +306,7 @@ class Plugin(indigo.PluginBase):
                     "%s at %s: unavailable for Indigo device creation: %s. "
                     "The Shelly remains in the discovered-device menu; available channels: %s.",
                     self._device_label(info), address,
-                    ", ".join(omitted) or "no supported switch or input channels reported",
+                    ", ".join(omitted) or "no supported switch, dimmer or input channels reported",
                     ", ".join(available) or "none")
             self.reported_channel_warnings[info["id"]] = problem
         else:
@@ -322,7 +343,7 @@ class Plugin(indigo.PluginBase):
                     protocol=indigo.kProtocol.Plugin,
                     address=f"{info['id']}/{channel.key}",
                     name=f"{self._device_label(info)} {channel.key}",
-                    deviceTypeId="shellySwitch" if channel.kind == "switch" else "shellyInput",
+                    deviceTypeId=self._expected_device_type(props),
                     props=props)
                 devices[key] = dev
                 created += 1
@@ -453,11 +474,12 @@ class Plugin(indigo.PluginBase):
         values = valuesDict or {}
         switches = values.get("includeSwitches", True)
         inputs = values.get("includeInputs", False)
-        if not switches and not inputs:
-            self.logger.warning("Select switches and/or inputs before creating Indigo devices")
+        dimmers = values.get("includeDimmers", True)
+        if not switches and not inputs and not dimmers:
+            self.logger.warning("Select switches, dimmers and/or inputs before creating Indigo devices")
             return False
         self._emit("create_devices", "", {"includeSwitches": bool(switches),
-                   "includeInputs": bool(inputs), "shellyId": values.get("shellyId") or ALL_DEVICES})
+                   "includeInputs": bool(inputs), "includeDimmers": bool(dimmers), "shellyId": values.get("shellyId") or ALL_DEVICES})
         return True
 
     @staticmethod
@@ -468,14 +490,15 @@ class Plugin(indigo.PluginBase):
         kind, separator, number = component.partition(":")
         if not separator or not number.isdecimal():
             return None
-        return {"switch": "shellySwitch", "input": "shellyInput"}.get(kind)
+        return {"switch": "shellySwitch", "light": "shellyDimmer", "input": "shellyInput"}.get(kind)
 
     def _block_invalid_binding(self, dev):
         expected = self._expected_device_type(dev.pluginProps)
         if expected == dev.deviceTypeId and self._selection_key(dev.pluginProps):
             self.reported_binding_errors.pop(dev.id, None)
             return False
-        label = {"shellySwitch": "Shelly Switch", "shellyInput": "Shelly Input"}.get(expected)
+        label = {"shellySwitch": "Shelly Switch", "shellyDimmer": "Shelly Dimmer",
+                 "shellyInput": "Shelly Input"}.get(expected)
         message = (f"Channel {dev.pluginProps.get('component')} requires {label}; edit the device type or channel."
                    if label else "Select a supported Shelly channel in the device configuration.")
         dev.setErrorStateOnServer(message)
@@ -498,7 +521,7 @@ class Plugin(indigo.PluginBase):
                 "address": f"{info['id']}/{channel.key}"}
 
     def _channel_choices(self, typeId):
-        kind = {"shellySwitch": "switch", "shellyInput": "input"}.get(typeId)
+        kind = {"shellySwitch": "switch", "shellyDimmer": "light", "shellyInput": "input"}.get(typeId)
         with self.catalog_lock:
             return {key: dict(entry) for key, entry in self.catalog.items()
                     if entry["component"].split(":")[0] == kind}
@@ -518,17 +541,19 @@ class Plugin(indigo.PluginBase):
             key = self._selection_key(saved)
             choices.setdefault(key, {**saved, "online": False,
                                      "label": f"{saved['shellyId']} / {saved['component']}"})
-        claimed = {self._selection_key(dev.pluginProps): dev for dev in self._devices()}
+        claimed = {self._selection_key(dev.pluginProps) for dev in self._devices()
+                   if dev.id != int(targetId or 0)}
+        current = self._selection_key(saved) if saved else None
         options = []
         for key, entry in choices.items():
+            if key in claimed and key != current:
+                continue
             label = entry["label"]
-            owner = claimed.get(key)
-            if owner is not None and owner.id != int(targetId or 0):
-                label += f" [already configured: {owner.name}]"
             if not entry["online"]:
                 label += " [offline]"
             options.append((key, label))
-        placeholder = "Select a Shelly channel" if options else "No supported channels discovered yet"
+        placeholder = ("Select a Shelly channel" if options else "No unassigned Shelly channels available"
+                       if choices else "No supported channels discovered yet")
         return [(NO_CHANNEL, placeholder)] + sorted(options, key=lambda item: item[1].casefold())
 
     def getDeviceConfigUiValues(self, pluginProps, typeId, devId):
@@ -590,8 +615,17 @@ class Plugin(indigo.PluginBase):
                    indigo.kDeviceAction.Toggle: "toggle"}
         if action.deviceAction in actions:
             self._emit("command", "", (dev.id, actions[action.deviceAction]))
-        elif action.deviceAction == indigo.kDeviceAction.RequestStatus:
+        elif action.deviceAction in (indigo.kDeviceAction.SetBrightness, indigo.kDeviceAction.BrightenBy,
+                                     indigo.kDeviceAction.DimBy) and dev.deviceTypeId == "shellyDimmer":
+            command = {indigo.kDeviceAction.SetBrightness: "brightness",
+                       indigo.kDeviceAction.BrightenBy: "brighten", indigo.kDeviceAction.DimBy: "dim"}
+            self._emit("command", "", (dev.id, command[action.deviceAction], action.actionValue))
+
+    def actionControlUniversal(self, action, dev):
+        if action.deviceAction in (indigo.kUniversalAction.RequestStatus, indigo.kUniversalAction.EnergyUpdate):
             self._emit("refresh", dev.pluginProps["host"])
+        else:
+            self.logger.warning("%s: this universal action is not supported", dev.name)
 
     def validatePrefsConfigUi(self, valuesDict):
         if valuesDict.get("logLevel", "INFO") not in ("INFO", "DEBUG"):

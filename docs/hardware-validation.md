@@ -79,3 +79,16 @@ The input test review retained existing press/release and lifecycle regressions,
 updated the former waiting-error assertions to normal Unknown display, and added
 wire-level identity/read validation, both sampled positions, failed-read fallback
 and protection against buffered pre-sample events overwriting a newer sample.
+
+## 2 November 2026 — dimmer reads, development version 0.1.10
+
+The updated worker and channel model were run read-only against the owner's
+Gen3 dimmer and Gen2 Pro dimmer. Both exposed `light:0` and translated successfully
+to OFF / 0% brightness with power, voltage, current and accumulated energy values.
+Shelly's retained nonzero brightness while off was not confused with an active
+output. No Indigo device was created and no output or device setting was changed.
+
+Indigo creation/binding and On/Off/Toggle/brightness actions are covered with a
+strict host double and a localhost WebSocket simulator. Physical dimmer control
+through the installed plugin still needs owner validation. The focused test
+review is recorded in architecture.md; existing switch/input regressions remain.

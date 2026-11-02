@@ -37,6 +37,8 @@ class Device:
         defaults = {'Boolean': False, 'Number': 0.0, 'String': ''}
         registered = {state.get('id'): defaults[state.findtext('ValueType')] for state in definition}
         registered['onOffState'] = False
+        if self.deviceTypeId == 'shellyDimmer':
+            registered['brightnessLevel'] = 0
         self.states = {key: self.states.get(key, default) for key, default in registered.items()}
     def updateStateImageOnServer(self, image):
         self.image = image
@@ -71,6 +73,9 @@ class IndigoTests(unittest.TestCase):
                  triggers={}, trigger=types.SimpleNamespace(execute=Mock()),
                  device=types.SimpleNamespace(create=self.devices.create),
                  kProtocol=types.SimpleNamespace(Plugin='plugin'), Dict=dict,
+                 kDeviceAction=types.SimpleNamespace(**{name: name for name in (
+                     'TurnOn', 'TurnOff', 'Toggle', 'SetBrightness', 'BrightenBy', 'DimBy')}),
+                 kUniversalAction=types.SimpleNamespace(RequestStatus='RequestStatus', EnergyUpdate='EnergyUpdate'),
                  kStateImageSel=types.SimpleNamespace(SensorOff='neutral', SensorOn='on'))
         self.patcher = patch.dict(sys.modules, indigo=module)
         self.patcher.start()
@@ -173,9 +178,11 @@ class IndigoTests(unittest.TestCase):
                 field = ui.find("Field[@id='selectedChannel']")
                 self.assertEqual(field.get('type'), 'menu')
                 generate = getattr(self.plugin, field.find('List').get('method'))
-                options = generate(typeId=type_id)
+                device_id = 1 if type_id == 'shellySwitch' else 2
+                self.assertEqual(len(generate(typeId=type_id)), 1)
+                options = generate(typeId=type_id, targetId=device_id)
                 self.assertEqual([key for key, label in options[1:]], [f'shelly-unit/{component}'])
-                self.assertIn('already configured', options[1][1])
+                self.assertNotIn('already configured', options[1][1])
                 changed = getattr(self.plugin, field.findtext('CallbackMethod'))
                 values = changed({'selectedChannel': options[1][0]}, type_id, 0)
                 self.assertEqual(values['host'], self.address)
@@ -243,7 +250,7 @@ class IndigoTests(unittest.TestCase):
         self.assertEqual(values['host'], address)
         with self.assertLogs('test-plugin', level='WARNING'):
             self.plugin._handle('offline', address, 'test disconnect')
-        self.assertIn('offline', dict(self.plugin.getShellyChannels(typeId='shellySwitch'))[key])
+        self.assertIn('offline', dict(self.plugin.getShellyChannels(typeId='shellySwitch', targetId=1))[key])
         # A new full snapshot must remove channels no longer exposed by the device.
         self.plugin._handle('ready', address, (self.info, {'input:0': {'state': True}}))
         self.assertNotIn(key, dict(self.plugin.getShellyChannels(typeId='shellySwitch')))
@@ -259,7 +266,7 @@ class IndigoTests(unittest.TestCase):
         self.assertIsNone(button.error)
         self.assertEqual(button.states['inputStatus'], 'Unknown')
         self.assertEqual(button.image, 'neutral')
-        self.assertIn('shelly-unit/input:0', dict(self.plugin.getShellyChannels(typeId='shellyInput')))
+        self.assertIn('shelly-unit/input:0', dict(self.plugin.getShellyChannels(typeId='shellyInput', targetId=2)))
         self.plugin._handle('event', self.address, {'events': [
             {'component': 'input:0', 'event': 'btn_down', 'ts': 1}]})
         self.assertTrue(button.states['onOffState'])
@@ -407,7 +414,7 @@ class IndigoTests(unittest.TestCase):
         self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True, 'shellyId': 'shelly-unit'})
         self.assertEqual(len(self.devices), 1)
         with self.assertLogs('test-plugin', level='WARNING'):
-            self.assertFalse(self.plugin.createDiscoveredDevices({'includeSwitches': False, 'includeInputs': False}))
+            self.assertFalse(self.plugin.createDiscoveredDevices({'includeSwitches': False, 'includeInputs': False, 'includeDimmers': False}))
         self.assertTrue(self.plugin.events.empty())
 
     def test_dynamic_menu_ids_are_legal_including_all_and_placeholder_rows(self):
@@ -651,26 +658,26 @@ class IndigoTests(unittest.TestCase):
             self.assertTrue(self.plugin.validatePrefsConfigUi({'logLevel': level})[0])
         self.assertFalse(self.plugin.validatePrefsConfigUi({'logLevel': 'INVALID'})[0])
 
-    def test_discovered_dimmer_is_visible_without_supported_channels_or_creation(self):
-        info = {'id': 'test-dimmer', 'gen': 3, 'model': 'S3DM-0A101WWL'}
+    def test_discovered_unsupported_device_is_visible_without_creation(self):
+        info = {'id': 'test-cover', 'gen': 3, 'model': 'unsupported-cover'}
         address = '192.0.2.50:80'
-        status = {'light:0': {'output': False, 'brightness': 100},
+        status = {'cover:0': {'state': 'stopped'},
                   'input:0': {'state': None, '_inputType': 'button', '_enabled': False}}
         self.plugin._handle('ready', address, (info, status))
-        self.assertIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['test-dimmer'])
-        self.assertFalse(any(entry['shellyId'] == 'test-dimmer' for entry in self.plugin.catalog.values()))
+        self.assertIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['test-cover'])
+        self.assertFalse(any(entry['shellyId'] == 'test-cover' for entry in self.plugin.catalog.values()))
         self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True,
-                                                  'shellyId': 'test-dimmer'})
+                                                  'shellyId': 'test-cover'})
         self.assertEqual(len(self.devices), 2)
-        self.plugin._handle('identity', address, {**info, 'name': 'Bedroom dimmer'})
-        self.assertIn('Bedroom dimmer', dict(self.plugin.getDiscoveredShellyDevices())['test-dimmer'])
+        self.plugin._handle('identity', address, {**info, 'name': 'Bedroom blind'})
+        self.assertIn('Bedroom blind', dict(self.plugin.getDiscoveredShellyDevices())['test-cover'])
         with self.assertLogs('test-plugin', level='WARNING'):
             self.plugin._handle('offline', address, 'test disconnect')
-        self.assertNotIn('test-dimmer', dict(self.plugin.getDiscoveredShellyDevices()))
+        self.assertNotIn('test-cover', dict(self.plugin.getDiscoveredShellyDevices()))
         self.plugin._handle('ready', address, (info, status))
-        self.assertIn('test-dimmer', dict(self.plugin.getDiscoveredShellyDevices()))
+        self.assertIn('test-cover', dict(self.plugin.getDiscoveredShellyDevices()))
         self.plugin._handle('status', address, {'input:0': {'state': None, '_inputType': 'button', '_enabled': True}})
-        self.assertNotIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['test-dimmer'])
+        self.assertNotIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['test-cover'])
         self.assertEqual(len(self.devices), 2)
 
     def test_discovered_device_identity_survives_address_move_and_reuse(self):
@@ -693,24 +700,24 @@ class IndigoTests(unittest.TestCase):
         self.plugin.startup()
         records = self.plugin.indigo_log_handler.buffer
         records.clear()
-        info = {'id': 'test-dimmer', 'name': 'Bedroom', 'gen': 3}
-        status = {'light:0': {'output': False, 'brightness': 100},
+        info = {'id': 'test-cover', 'name': 'Bedroom', 'gen': 3}
+        status = {'cover:0': {'output': False, 'brightness': 100},
                   'wifi': {'ssid': 'private-value'}, 'cloud': {'connected': True},
                   'script:1': {'running': True}}
         self.plugin._handle('ready', '192.0.2.50:80', (info, status))
         messages = [record.getMessage() for record in records]
         summary = next(message for message in messages if message.startswith('Queried'))
-        for text in ('Bedroom (test-dimmer)', '192.0.2.50:80', 'Gen3', 'light:0', 'wifi', 'cloud', 'script:1',
+        for text in ('Bedroom (test-cover)', '192.0.2.50:80', 'Gen3', 'cover:0', 'wifi', 'cloud', 'script:1',
                      'available for Indigo creation: none'):
             self.assertIn(text, summary)
         warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
         self.assertEqual(len(warnings), 1)
-        self.assertIn('light:0 (type not supported)', warnings[0])
+        self.assertIn('cover:0 (type not supported)', warnings[0])
         self.assertIn('remains in the discovered-device menu', warnings[0])
         self.assertNotIn('script:1', warnings[0])
         self.assertNotIn('wifi', warnings[0])
         self.assertFalse(any('private-value' in message for message in messages))
-        self.assertIn('test-dimmer', dict(self.plugin.getDiscoveredShellyDevices()))
+        self.assertIn('test-cover', dict(self.plugin.getDiscoveredShellyDevices()))
         self.assertEqual(len(self.devices), 2)
 
     def test_partial_poll_and_reconnect_do_not_repeat_unsupported_warnings(self):
@@ -718,7 +725,7 @@ class IndigoTests(unittest.TestCase):
         records = self.plugin.plugin_file_handler.buffer
         info = {'id': 'mixed-unit', 'gen': 3}
         address = '192.0.2.50:80'
-        status = {'switch:0': {'output': False}, 'light:0': {'output': True}, 'wifi': {}}
+        status = {'switch:0': {'output': False}, 'cover:0': {'output': True}, 'wifi': {}}
         self.plugin._handle('ready', address, (info, status))
         records.clear()
         self.plugin._handle('status', address, {'switch:0': {'apower': 12}})
@@ -731,7 +738,7 @@ class IndigoTests(unittest.TestCase):
         self.plugin._handle('status', address, {'pm1:0': {'apower': 0}})
         warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
         self.assertEqual(len(warnings), 1)
-        self.assertIn('light:0', warnings[0])
+        self.assertIn('cover:0', warnings[0])
         self.assertIn('pm1:0', warnings[0])
         self.assertIn('available channels: switch:0', warnings[0])
         self.assertNotIn('no supported channels', dict(self.plugin.getDiscoveredShellyDevices())['mixed-unit'])
@@ -767,7 +774,7 @@ class IndigoTests(unittest.TestCase):
                                                   {'wifi': {}, 'cloud': {}, 'sys': {}, 'script:1': {}}))
         warnings = [record.getMessage() for record in records if record.levelno == logging.WARNING]
         self.assertEqual(len(warnings), 1)
-        self.assertIn('no supported switch or input channels reported', warnings[0])
+        self.assertIn('no supported switch, dimmer or input channels reported', warnings[0])
         self.assertIn('empty-unit', dict(self.plugin.getDiscoveredShellyDevices()))
 
     def test_creation_dialog_refresh_loads_later_discovery_and_preserves_choices(self):

@@ -116,3 +116,24 @@ class ProtocolTests(unittest.TestCase):
         self.assertFalse(channel.supported)
         self.assertIsNone(inventory.apply_input_event({'component': 'input:0', 'event': 'btn_down'}))
         self.assertNotIn('onOffState', channel.states())
+
+    def test_dimmer_brightness_tracks_output_and_partial_updates(self):
+        inventory = Inventory()
+        channel, = inventory.merge({'light:0': {'output': False, 'brightness': 70, 'apower': 0,
+                                                'aenergy': {'total': 123}}})
+        self.assertTrue(channel.supported)
+        self.assertEqual(channel.states(), {'onOffState': False, 'brightnessLevel': 0,
+                                            'powerWatts': 0.0, 'energyWh': 123.0})
+        inventory.merge({'light:0': {'output': True}})
+        self.assertEqual(channel.states()['brightnessLevel'], 70)
+        inventory.merge({'light:0': {'brightness': 42.4, 'voltage': 231}})
+        self.assertEqual(channel.states()['brightnessLevel'], 42)
+        self.assertEqual(channel.states()['energyWh'], 123)
+        inventory.merge({'light:0': {'output': False}})
+        self.assertEqual(channel.states()['brightnessLevel'], 0)
+        self.assertEqual(channel.values['brightness'], 42.4)
+
+    def test_invalid_dimmer_readings_do_not_fabricate_brightness(self):
+        for value in (None, True, -1, 101, float('nan'), float('inf'), '50'):
+            channel, = Inventory().merge({'light:0': {'output': True, 'brightness': value}})
+            self.assertNotIn('brightnessLevel', channel.states())

@@ -24,6 +24,7 @@ class Simulator(socketserver.StreamRequestHandler):
         self.wfile.write(('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n'
                           'Connection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n').encode())
         output = False
+        light = {'id': 0, 'output': False, 'brightness': 70}
         while True:
             try:
                 head = self.rfile.read(2)
@@ -55,12 +56,25 @@ class Simulator(socketserver.StreamRequestHandler):
                 self.send_frame({'method': 'NotifyEvent', 'params': {'events': [
                     {'component': 'input:0', 'event': 'btn_up', 'ts': 2}]}})
                 result = {'id': 0, 'state': None}
+            elif method in ('Light.Set', 'Light.Toggle'):
+                params = request['params']
+                if method == 'Light.Toggle':
+                    light['output'] = not light['output']
+                else:
+                    if 'on' in params:
+                        light['output'] = params['on']
+                    if 'brightness' in params:
+                        light['brightness'] = params['brightness']
+                self.send_frame({'method': 'NotifyStatus', 'params': {'light:0': dict(light)}})
+                result = None
             elif method == 'Switch.Set':
                 output = request['params']['on']
                 self.send_frame({'method': 'NotifyStatus', 'params': {'switch:0': {'output': output}}})
                 result = {'was_on': not output}
             else:
                 result = {'switch:0': {'id': 0, 'output': output}}
+                if getattr(self.server, 'dimmer', False):
+                    result['light:0'] = dict(light)
                 if getattr(self.server, 'button', False):
                     result['input:0'] = {'id': 0, 'state': None}
             self.send_frame({'id': request['id'], 'result': result})
@@ -163,4 +177,37 @@ class WebsocketTests(unittest.TestCase):
                 worker.join(5)
                 server.shutdown()
                 server.server_close()
+        self.assertFalse(worker.is_alive())
+
+    def test_dimmer_worker_receives_snapshot_and_real_websocket_control_notifications(self):
+        server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), Simulator)
+        server.daemon_threads = True
+        server.methods = queue.Queue()
+        server.dimmer = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        events = queue.Queue()
+        worker = Worker(f'127.0.0.1:{server.server_address[1]}', lambda *args: events.put(args))
+        try:
+            worker.start()
+            kind, _, data = events.get(timeout=5)
+            self.assertEqual(kind, 'ready', data)
+            self.assertEqual(data[1]['light:0']['brightness'], 70)
+            self.assertFalse(data[1]['light:0']['output'])
+            for method, params, expected in (
+                    ('Light.Set', {'id': 0, 'on': True, 'brightness': 65}, (True, 65)),
+                    ('Light.Toggle', {'id': 0}, (False, 65))):
+                worker.command(method, params)
+                # A full reconciliation can follow the preceding notification.
+                while True:
+                    kind, _, data = events.get(timeout=5)
+                    self.assertEqual(kind, 'status', data)
+                    light = data.get('light:0', {})
+                    if (light.get('output'), light.get('brightness')) == expected:
+                        break
+        finally:
+            worker.stop()
+            worker.join(5)
+            server.shutdown()
+            server.server_close()
         self.assertFalse(worker.is_alive())

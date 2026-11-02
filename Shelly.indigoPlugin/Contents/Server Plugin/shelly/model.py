@@ -34,7 +34,7 @@ class Channel:
 
     @property
     def supported(self):
-        return self.kind == "switch" or (
+        return self.kind in ("switch", "light") or (
             self.values.get("_enabled") is not False and (
                 isinstance(self.values.get("state"), bool) or self.values.get("_inputType") == "button"))
 
@@ -54,6 +54,13 @@ class Channel:
                 result["onOffState"] = state
         elif isinstance(source.get("output"), bool):
             result["onOffState"] = source["output"]
+        if self.kind == "light":
+            brightness = source.get("brightness")
+            if source.get("output") is False:
+                result["brightnessLevel"] = 0
+            elif (source.get("output") is True and isinstance(brightness, (int, float))
+                  and not isinstance(brightness, bool) and 0 <= brightness <= 100):
+                result["brightnessLevel"] = round(brightness)
         for raw, state in (("apower", "powerWatts"), ("voltage", "voltage"),
                            ("current", "currentAmps")):
             value = source.get(raw)
@@ -74,7 +81,7 @@ class Inventory:
         """Notifications are deltas: absent fields must never reset known state."""
         changed = []
         for key, values in status.items():
-            if not re.fullmatch(r"(?:switch|input):\d+", key) or not isinstance(values, dict):
+            if not re.fullmatch(r"(?:switch|light|input):\d+", key) or not isinstance(values, dict):
                 continue
             channel = self.channels.setdefault(key, Channel(key))
             if (isinstance(values.get("state"), bool) or values.get("_enabled") is False

@@ -21,6 +21,6 @@
     <Description>Info shows normal activity, warnings and errors. Debug also shows discovery and query messages. Applies immediately; the plugin log file always includes Debug.</Description>
   </Field>
   <Field id="notice" type="label">
-    <Label>Alpha: switches, binary/button inputs and switch metering. Restart after changing connection preferences. Log level changes apply immediately.</Label>
+    <Label>Alpha: switches, dimmers, binary/button inputs and output metering. Restart after changing connection preferences. Log level changes apply immediately.</Label>
   </Field>
 </PluginConfig>

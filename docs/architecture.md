@@ -30,13 +30,21 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   unsupported channels. Names, reconnects and address changes update that snapshot.
   The creation dialog has an explicit refresh button with dynamic list reload;
   Debug records the exact menu choices supplied to Indigo for UI diagnosis.
+- Source build 0.1.10 (unreleased) maps `light:*` to native Indigo dimmers with
+  brightness, On/Off/Toggle, bounded relative adjustments and optional metering.
+  An off output displays 0% without discarding Shelly's retained turn-on level.
+  Native universal status/energy-update actions request a fresh status read.
+- New Device hides assigned channels; Edit Device retains its own current binding.
+  Disabled devices still reserve channels, deleted devices release them, and
+  unused inputs on the same physical unit remain available. Save-time duplicate
+  validation handles dialogs that were opened before another device claimed a channel.
 - Device-local names are read through Sys.GetConfig.device.name at connection
   and during reconciliation. They prefix internal IDs in selectors and new
   Indigo device names. Existing Indigo names are not overwritten. App-only cloud
   labels are outside the local API integration.
-- Switches, binary inputs and button inputs become separate Indigo relay/sensor
-  devices. Switch metering is exposed where present. Unsupported components are
-  ignored. Button channels are identified with read-only Input.GetConfig calls
+- Switches, dimmers, binary inputs and button inputs become separate Indigo
+  relay/dimmer/sensor devices. Output metering is exposed where present. Unsupported
+  components are ignored. Button channels are identified with read-only Input.GetConfig calls
   and track btn_down/btn_up independently of relay state.
 - Binary RPC input states initialize immediately. Gen4 non-inverted button inputs
   can also initialize from an identity-verified read through already-enabled
@@ -76,7 +84,7 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
 
 ## Following milestones
 
-Hardware validation; per-device credentials; lights/dimmers, covers and standalone
+Hardware validation; per-device credentials; color/adjustable-white lights, covers and standalone
 meters; click/long-press event triggers; Gen1 discovery/REST/callback listener; sleeping
 sensors, IPv6 and broader component coverage. Gen4 support here means devices
 running the Shelly Wi-Fi/Ethernet RPC firmware, not Zigbee-only operation.
@@ -107,3 +115,16 @@ of building or publishing it. Record hardware testing status honestly.
 
 - https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input/
 - https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Modbus/
+
+## Dimmer and selector test review — source build 0.1.10
+
+Retained switch/input, identity, reconnect, authentication and trigger regressions.
+Updated selector expectations for hiding assigned channels while preserving edits
+and duplicate validation. Former unsupported-light fixtures now use unsupported
+covers, so those diagnostics still protect an applicable requirement. Added dimmer
+coverage for explicit/manual creation, native schemas, partial status and metering,
+brightness boundaries and invalid values, disabled/identity checks, native actions,
+and real WebSocket notification/reconciliation. Control tests use only simulators.
+
+- https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light/
+- https://github.com/IndigoDomotics/IndigoSDK/tree/main/Example%20Device%20-%20Relay%20and%20Dimmer.indigoPlugin
