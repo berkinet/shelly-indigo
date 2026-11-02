@@ -55,7 +55,7 @@ class Plugin(indigo.PluginBase):
         if address not in self.workers:
             worker = Worker(address, self._emit, self.pluginPrefs.get("password", ""), expected_id)
             self.workers[address] = worker
-            self.logger.info("Discovered Shelly endpoint %s; connecting", address)
+            self.logger.info("Discovered Shelly endpoint %s", address)
             worker.start()
 
     def deviceStartComm(self, dev):
@@ -162,7 +162,7 @@ class Plugin(indigo.PluginBase):
                     self.workers.pop(old_address).stop()
                     del self.info[old_address]
             self.info[address] = info
-            self.logger.info("Connected to %s (Gen%s)", info["id"], info["gen"])
+            self.logger.info("Querying %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
             with self.catalog_lock:
                 self.catalog = {key: entry for key, entry in self.catalog.items()

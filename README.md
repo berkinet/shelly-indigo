@@ -145,8 +145,10 @@ as the release asset. Install the complete current bundle to replace an older
 incomplete installation. Startup now reports the missing library explicitly.
 
 After installation and restart, look for `Shelly discovery started` in the Indigo
-Event Log. That confirms the browser started; successful device connections and
-`Created ...` messages confirm that supported channels were found. If discovery
+Event Log. That confirms the browser started. A `Querying ...` message confirms
+successful device-information and status reads; it does not mean an Indigo device
+was created. `Created ...` messages appear when the explicit creation command adds
+a channel. If discovery
 starts but finds nothing, verify the devices are Gen2–Gen4 and that IPv4 Bonjour
 multicast can reach the Indigo server. Additional hosts can be entered in plugin
 preferences when multicast does not cross subnets.
