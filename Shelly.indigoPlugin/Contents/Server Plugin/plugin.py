@@ -13,6 +13,10 @@ import time
 import shelly
 sys.path.insert(0, str(Path(shelly.__file__).resolve().parents[2] / "Packages"))
 import indigo
+from shelly.commands import translate
+from shelly.connections import Connections
+from shelly.credentials import Credentials
+from shelly.diagnostics import Diagnostics
 from shelly.discovery import Discovery
 from shelly.model import Inventory, endpoint
 from shelly.worker import Worker
@@ -27,13 +31,21 @@ class Plugin(indigo.PluginBase):
         super().__init__(pluginId, pluginDisplayName, pluginVersion, pluginPrefs)
         self.events = queue.Queue(maxsize=1024)
         self.closing = threading.Event()
-        self.workers = {}
+        self.connections = Connections()
+        self.workers = self.connections.workers
+        self.credentials = Credentials(pluginPrefs.get("password", ""), pluginPrefs.get("devicePasswords", "{}"))
+        self.outages = {}
+        self.overflows = set()
+        self.pending_probes = {}
+        self.overflow_lock = threading.Lock()
         self.info = {}
         self.inventory = {}
         self.catalog = {}
         self.discovered_devices = {}
-        self.component_reports = {}
-        self.reported_channel_warnings = {}
+        self.diagnostics = Diagnostics(self.logger)
+        self.component_reports = self.diagnostics.reports
+        self.reported_channel_warnings = self.diagnostics.warnings
+        self._next_maintenance = 0
         self.catalog_lock = threading.Lock()
         self.reported_binding_errors = {}
         self.button_triggers = {}
@@ -60,23 +72,108 @@ class Plugin(indigo.PluginBase):
                 raise RuntimeError(message) from exc
 
     def _emit(self, kind, address, payload=None):
-        while not self.closing.is_set():
-            try:
-                self.events.put((kind, address, payload), timeout=0.5)
-                return
-            except queue.Full:
-                continue
+        if self.closing.is_set():
+            return False
+        try:
+            self.events.put((kind, address, payload), timeout=0.1)
+            return True
+        except queue.Full:
+            self.logger.error("Shelly event queue is full; %s request was not accepted", kind)
+            return False
 
     def _devices(self):
         return indigo.devices.iter("self")
 
-    def _connect(self, address, expected_id=None):
+    def _authorize_credentials(self):
+        self.credentials.authorize(dev.pluginProps.get("shellyId") for dev in self._devices()
+                                   if self._selection_key(dev.pluginProps))
+
+    def _connect(self, address, expected_id=None, exclude_id=None):
         address = endpoint(address)
-        if address not in self.workers:
-            worker = Worker(address, self._emit, self.pluginPrefs.get("password", ""), expected_id)
-            self.workers[address] = worker
-            self.logger.debug("Discovered Shelly endpoint %s", address)
+        self.connections.touch(address)
+        self._authorize_credentials()
+        if address in self.workers:
+            if self.workers[address].is_alive():
+                return
+            expected_id = expected_id or self.workers[address].expected_id
+            self._retire(address)
+        generation = self.connections.reserve(address)
+        closing = self.closing
+        def emit(kind, host, payload=None):
+            if closing.is_set():
+                return
+            try:
+                self.events.put((kind, host, payload, generation), timeout=0.1)
+            except queue.Full as exc:
+                with self.overflow_lock:
+                    self.overflows.add((host, generation))
+                raise BufferError("Indigo event queue is full") from exc
+        explicit = {endpoint(host.strip()) for host in self.pluginPrefs.get("hosts", "").split(",") if host.strip()}
+        password = lambda identity: self.credentials.password(identity, address in explicit)
+        worker = Worker(address, emit, password, expected_id, exclude_id=exclude_id)
+        self.workers[address] = worker
+        self.logger.debug("Discovered Shelly endpoint %s", address)
+        try:
             worker.start()
+        except Exception:
+            self._retire(address)
+            raise
+
+    def _retire(self, address):
+        worker = self.connections.retire(address)
+        self.info.pop(address, None)
+        self.inventory.pop(address, None)
+        self.component_reports.pop(address, None)
+        with self.catalog_lock:
+            self.catalog = {key: entry for key, entry in self.catalog.items() if entry["host"] != address}
+            for entry in self.discovered_devices.values():
+                if entry["host"] == address:
+                    entry["online"] = False
+        return worker
+
+    def _process_events(self):
+        for _ in range(100):
+            try:
+                event = self.events.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                self._handle(*event)
+            except (ConnectionError, queue.Full, ValueError, KeyError) as exc:
+                kind, address, payload, *_ = event
+                context = f"device {payload[0]} {payload[1]}" if kind == "command" else kind
+                self.logger.warning("Shelly %s at %s rejected: %s", context, address or "configured endpoint", exc)
+            except Exception:
+                self.logger.exception("Could not process Shelly device update")
+        with self.overflow_lock:
+            overflows, self.overflows = self.overflows, set()
+        for address, generation in overflows:
+            if self.connections.current(address, generation):
+                expected = self.workers[address].expected_id
+                self._handle("offline", address, "Event queue overloaded; connection reset, queued commands discarded")
+                self._retire(address)
+                self._connect(address, expected)
+        probes, self.pending_probes = self.pending_probes, {}
+        for address, excluded in probes.items():
+            if address not in self.workers:
+                self._connect(address, exclude_id=excluded)
+        if time.monotonic() >= self._next_maintenance:
+            self._prune_connections()
+            self._next_maintenance = time.monotonic() + 60
+
+    def _prune_connections(self):
+        configured = {endpoint(dev.pluginProps["host"]) for dev in self._devices() if dev.pluginProps.get("host")}
+        configured.update(endpoint(host.strip()) for host in self.pluginPrefs.get("hosts", "").split(",") if host.strip())
+        cutoff = time.monotonic() - 900
+        for address, worker in list(self.workers.items()):
+            if (address not in configured and not worker.online
+                    and self.connections.seen.get(address, 0) < cutoff):
+                self.logger.debug("Retiring stale unassigned Shelly endpoint %s", address)
+                self._retire(address)
+                self.outages.pop(address, None)
+                with self.catalog_lock:
+                    self.discovered_devices = {identity: entry for identity, entry in self.discovered_devices.items()
+                                               if entry["host"] != address}
 
     def deviceStartComm(self, dev):
         address = dev.pluginProps.get("host")
@@ -100,42 +197,61 @@ class Plugin(indigo.PluginBase):
 
     def runConcurrentThread(self):
         discovery = None
+        if self.closing.is_set():
+            # Indigo retries this method on the same object after an unexpected exit.
+            self.closing = threading.Event()
+            self.events = queue.Queue(maxsize=1024)
         try:
+            for dev in self._devices():
+                if dev.enabled and dev.pluginProps.get("host") and self._selection_key(dev.pluginProps):
+                    self._connect(dev.pluginProps["host"], dev.pluginProps["shellyId"])
             for address in self.pluginPrefs.get("hosts", "").split(","):
                 if address.strip():
                     self._connect(address.strip())
             if self.pluginPrefs.get("discovery", True):
                 try:
-                    discovery = Discovery(lambda address: self._emit("discover", address))
+                    closing = self.closing
+                    def found(address):
+                        if not closing.is_set():
+                            self._emit("discover", address)
+                    discovery = Discovery(found)
                     self.logger.debug("Shelly discovery started (Gen2–Gen4 switches, dimmers and inputs)")
                 except Exception as exc:
                     self.logger.error("Bonjour discovery unavailable: %s; explicit hosts remain active", exc)
             while True:
-                self.sleep(0.05)
-                for _ in range(100):
-                    try:
-                        event = self.events.get_nowait()
-                    except queue.Empty:
-                        break
-                    try:
-                        self._handle(*event)
-                    except Exception:
-                        self.logger.exception("Could not process Shelly device update")
+                self.sleep(0.01)
+                self._process_events()
         except self.StopThread:
             pass
         finally:
             self.closing.set()
-            if discovery is not None:
-                discovery.close()
-            for worker in self.workers.values():
-                worker.stop()
-            deadline = time.monotonic() + 10
-            for worker in self.workers.values():
-                worker.join(max(0, deadline - time.monotonic()))
+            self.pending_probes.clear()
+            try:
+                if discovery is not None:
+                    discovery.close()
+            finally:
+                workers = [self._retire(address) for address in list(self.workers)]
+                deadline = time.monotonic() + 10
+                for worker in workers:
+                    if worker is not None:
+                        worker.join(max(0, deadline - time.monotonic()))
+                for dev in self._devices():
+                    if dev.enabled and self._selection_key(dev.pluginProps):
+                        self._channel_unavailable(dev, "Plugin communication stopped")
 
-    def _handle(self, kind, address, payload):
+    def _handle(self, kind, address, payload, generation=None):
+        if generation is not None and not self.connections.current(address, generation):
+            return
         if kind == "discover":
             self._connect(address, payload)
+        elif kind == "credentials":
+            identity, password = payload
+            with self.catalog_lock:
+                entry = dict(self.discovered_devices[identity])
+            self.pluginPrefs["devicePasswords"] = self.credentials.set(identity, password)
+            self._retire(entry["host"])
+            self.logger.info("Updated local credentials for %s; querying again", identity)
+            self._connect(entry["host"], identity)
         elif kind == "create_devices":
             created = 0
             kinds = set()
@@ -179,57 +295,64 @@ class Plugin(indigo.PluginBase):
             worker = self.workers.get(host)
             if worker is None or self.info.get(host, {}).get("id") != dev.pluginProps["shellyId"]:
                 raise ConnectionError("Shelly is offline or its address now belongs to another device")
-            namespace = "Light" if dev.deviceTypeId == "shellyDimmer" else "Switch"
-            params = {"id": int(dev.pluginProps["component"].split(":")[1])}
-            if action in ("on", "off", "toggle"):
-                method = f"{namespace}.Toggle" if action == "toggle" else f"{namespace}.Set"
-                if action != "toggle":
-                    params["on"] = action == "on"
-            elif action in ("brightness", "brighten", "dim") and namespace == "Light":
-                value = values[0] if values else None
-                if (not isinstance(value, (int, float)) or isinstance(value, bool)
-                        or not 0 <= value <= 100):
-                    raise ValueError("Brightness must be a number from 0 to 100")
-                if action != "brightness":
-                    channel = self.inventory[host].channels[dev.pluginProps["component"]]
-                    current = channel.states().get("brightnessLevel")
-                    if current is None:
-                        raise ConnectionError("Dimmer brightness is not known; request status first")
-                    value = min(100, max(0, current + (value if action == "brighten" else -value)))
-                method = "Light.Set"
-                params["on"] = value > 0
-                if value > 0:
-                    params["brightness"] = value
-            else:
-                raise ValueError("Unsupported Shelly device action")
+            if dev.pluginProps["component"] not in self.inventory[host].channels:
+                raise ConnectionError("Shelly channel is unavailable")
+            method, params = translate(dev.deviceTypeId, dev.pluginProps["component"], action, values)
             worker.command(method, params)
         elif kind == "refresh":
             worker = self.workers.get(address)
             if worker is not None and worker.online:
                 worker.command("Shelly.GetStatus", {})
+        elif kind == "identified":
+            with self.catalog_lock:
+                old = self.discovered_devices.get(payload["id"], {})
+                if not old.get("online") or old.get("host") == address:
+                    self.discovered_devices[payload["id"]] = {
+                        "id": payload["id"], "name": payload.get("name"), "host": address, "online": True,
+                        "requiresPassword": bool(payload.get("auth_en"))}
+        elif kind == "alias":
+            # This address still serves a unit already moved to another endpoint.
+            self.logger.debug("Retired alternate endpoint %s for %s", address, payload["id"])
+            self._retire(address)
+        elif kind == "mismatch":
+            self._handle("offline", address, "Address now belongs to another Shelly; re-querying its public identity")
+            self._retire(address)
+            self._connect(address, payload["id"])
+        elif kind == "auth_required":
+            self._handle("offline", address, payload["reason"] + "; use Set Device Password in the Shelly menu")
+            with self.catalog_lock:
+                entry = self.discovered_devices.get(payload.get("id"))
+                if entry is not None and entry["host"] == address:
+                    entry.update(online=True, requiresPassword=True)
         elif kind == "ready":
             info, status = payload
-            # A rediscovered device may have moved after DHCP renewal.
-            for old_address, old_info in list(self.info.items()):
-                if old_address != address and old_info["id"] == info["id"]:
-                    self.workers.pop(old_address).stop()
-                    del self.info[old_address]
+            obsolete = set(self.connections.claim(info["id"], address))
+            obsolete.update(host for host, item in self.info.items() if host != address and item["id"] == info["id"])
+            for old_address in obsolete:
+                self._retire(old_address)
+                self.outages.pop(old_address, None)
+                # A prior Bonjour update may have arrived while the old worker was
+                # still registered. Probe the vacated address for a different unit.
+                self.pending_probes[old_address] = info["id"]
+            if address in self.outages:
+                self.logger.info("Shelly %s at %s recovered", self._device_label(info), address)
+                self.outages.pop(address, None)
             self.info[address] = info
             self.logger.debug("Querying %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
             self.component_reports[address] = (set(), None)
             with self.catalog_lock:
-                # Discovery tracks physical units independently of supported channels.
                 for entry in self.discovered_devices.values():
                     if entry["host"] == address:
                         entry["online"] = False
                 self.discovered_devices[info["id"]] = {
-                    "id": info["id"], "name": info.get("name"), "host": address, "online": True}
+                    "id": info["id"], "name": info.get("name"), "host": address, "online": True,
+                    "requiresPassword": False}
                 self.catalog = {key: entry for key, entry in self.catalog.items()
-                                if entry["shellyId"] != info["id"]}
-            self._update(address, status)
-        elif kind == "status" and address in self.info:
-            self._update(address, payload)
+                                if entry["shellyId"] != info["id"] and entry["host"] != address}
+            self._update(address, status, full=True)
+        elif kind in ("status", "snapshot") and address in self.info:
+            self._update(address, payload, full=kind == "snapshot")
         elif kind == "event" and address in self.info:
             for event in payload.get("events", []):
                 component = event.get("component") if isinstance(event, dict) else None
@@ -256,7 +379,11 @@ class Plugin(indigo.PluginBase):
                 for key, entry in list(self.catalog.items()):
                     if entry["host"] == address:
                         self.catalog[key] = {**entry, "online": False}
-            self.logger.warning("Shelly %s unavailable: %s", address, payload)
+            if self.outages.get(address) != payload:
+                self.logger.warning("Shelly %s unavailable: %s", address, payload)
+                self.outages[address] = payload
+            else:
+                self.logger.debug("Shelly %s still unavailable: %s", address, payload)
             for dev in self._devices():
                 if dev.enabled and dev.pluginProps.get("host") == address:
                     if self._block_invalid_binding(dev):
@@ -267,70 +394,54 @@ class Plugin(indigo.PluginBase):
                         dev.updateStateOnServer("inputStatus", "Offline")
                     dev.setErrorStateOnServer("Offline")
         elif kind == "command_error":
-            self.logger.error("Shelly %s: %s", address, payload)
+            if isinstance(payload, dict):
+                identity = self.info.get(address, {}).get("id")
+                names = [f"{dev.name} (Indigo {dev.id})" for dev in self._devices()
+                         if dev.pluginProps.get("shellyId") == identity
+                         and dev.pluginProps.get("component") == payload.get("component")]
+                self.logger.error("Shelly command %s for %s at %s failed: %s", payload["method"],
+                                  ", ".join(names) or payload.get("component") or identity or "device",
+                                  address, payload["reason"])
+            else:
+                self.logger.error("Shelly %s: %s", address, payload)
 
-    def _update(self, address, status):
-        self._publish_channels(address, self.inventory[address].merge(status))
-        self._report_components(address, status)
+    @staticmethod
+    def _channel_unavailable(dev, reason):
+        dev.updateStateOnServer("online", False)
+        if dev.deviceTypeId == "shellyInput":
+            dev.updateStateOnServer("stateKnown", False)
+            dev.updateStateOnServer("inputStatus", reason)
+        dev.setErrorStateOnServer(reason)
 
-    def _report_components(self, address, status):
-        info = self.info[address]
-        components, previous = self.component_reports.get(address, (set(), None))
-        # Keep names across partial notifications; never log raw status/config values.
-        components.update(key for key, value in status.items() if isinstance(value, dict)
-                          and re.fullmatch(r"[a-z][a-z0-9_]*(?::[0-9]+)?", key))
-        channels = self.inventory[address].channels
-        components.update(channels)
-        available = sorted(key for key, channel in channels.items() if channel.supported)
-        omitted = []
-        for key in sorted(components):
-            # Retain these components in Debug inventory without treating them as
-            # missing Indigo switch/input/dimmer channels.
-            if ":" not in key or key.split(":")[0] in ("script", "infino") or key in available:
-                continue
-            channel = channels.get(key)
-            reason = ("disabled" if channel and channel.values.get("_enabled") is False
-                      else "input mode not supported" if channel else "type not supported")
-            omitted.append(f"{key} ({reason})")
-        configured = {}
-        for dev in self._devices():
-            component = dev.pluginProps.get("component")
-            if dev.pluginProps.get("shellyId") == info["id"] and component in available:
-                configured.setdefault(component, []).append(f"Indigo {dev.id}: {dev.name}")
-        assigned = [f"{key} ({'; '.join(sorted(configured[key]))})" for key in sorted(configured)]
-        unassigned = [key for key in available if key not in configured]
-        summary = (tuple(sorted(components)), tuple(available), tuple(omitted), tuple(assigned))
-        if summary != previous:
-            self.logger.debug(
-                "Queried %s at %s (Gen%s): components: %s; supported channels: %s; "
-                "already configured: %s; unassigned channels: %s",
-                self._device_label(info), address, info["gen"], ", ".join(sorted(components)) or "none",
-                ", ".join(available) or "none", ", ".join(assigned) or "none", ", ".join(unassigned) or "none")
-        self.component_reports[address] = (components, summary)
-        # Once per physical unit/problem combination, including across reconnects.
-        # A changed or resolved problem updates the signature so it can be reported again.
-        problem = (tuple(omitted), not available)
-        if omitted or not available:
-            if self.reported_channel_warnings.get(info["id"]) != problem:
-                if available:
-                    self.logger.warning(
-                        "Unsupported Indigo channels on %s at %s: %s. Supported channels: %s; "
-                        "unassigned channels: %s.", self._device_label(info), address,
-                        ", ".join(omitted), ", ".join(available), ", ".join(unassigned) or "none")
-                else:
-                    self.logger.warning(
-                        "No supported Indigo channels on %s at %s. Unavailable channels: %s. "
-                        "The Shelly remains in the discovered-device menu.",
-                        self._device_label(info), address, ", ".join(omitted) or "none reported")
-            self.reported_channel_warnings[info["id"]] = problem
+    def _update(self, address, status, full=False):
+        devices = list(self._devices())
+        if full:
+            channels, removed = self.inventory[address].replace(status)
+            identity = self.info[address]["id"]
+            for dev in self._devices():
+                if (dev.enabled and dev.pluginProps.get("shellyId") == identity
+                        and dev.pluginProps.get("component") in removed):
+                    self._channel_unavailable(dev, "Channel unavailable")
+            with self.catalog_lock:
+                self.catalog = {key: entry for key, entry in self.catalog.items()
+                                if not (entry["shellyId"] == identity and entry["component"] in removed)}
+            previous = self.component_reports.get(address, (set(), None))[1]
+            self.component_reports[address] = (set(), previous)
         else:
-            self.reported_channel_warnings.pop(info["id"], None)
+            channels = self.inventory[address].merge(status)
+        self._publish_channels(address, channels, device_snapshot=devices)
+        self._report_components(address, status, devices)
 
-    def _publish_channels(self, address, channels, create=False):
+    def _report_components(self, address, status, devices=None):
+        self.diagnostics.report(address, self.info[address], self.inventory[address], status,
+                                self._devices() if devices is None else devices,
+                                self._device_label(self.info[address]))
+
+    def _publish_channels(self, address, channels, create=False, device_snapshot=None):
         created = 0
         info = self.info[address]
         devices = {}
-        for dev in self._devices():
+        for dev in self._devices() if device_snapshot is None else device_snapshot:
             key = (dev.pluginProps.get("shellyId"), dev.pluginProps.get("component"))
             # Prefer a correctly typed device if an older installation contains
             # both a valid binding and an inconsistent duplicate.
@@ -353,12 +464,17 @@ class Plugin(indigo.PluginBase):
             if dev is None:
                 if not supported or not create:
                     continue
-                dev = indigo.device.create(
-                    protocol=indigo.kProtocol.Plugin,
-                    address=f"{info['id']}/{channel.key}",
-                    name=f"{self._device_label(info)} {channel.key}",
-                    deviceTypeId=self._expected_device_type(props),
-                    props=props)
+                try:
+                    dev = indigo.device.create(
+                        protocol=indigo.kProtocol.Plugin,
+                        address=f"{info['id']}/{channel.key}",
+                        name=f"{self._device_label(info)} {channel.key}",
+                        deviceTypeId=self._expected_device_type(props),
+                        props=props)
+                except Exception as exc:
+                    self.logger.error("Could not create %s / %s in Indigo (%s); other channels will continue",
+                                      info["id"], channel.key, type(exc).__name__)
+                    continue
                 devices[key] = dev
                 created += 1
                 self.logger.info("Created %s", dev.name)
@@ -389,6 +505,8 @@ class Plugin(indigo.PluginBase):
                          and states.get("onOffState") else indigo.kStateImageSel.SensorOff)
                 dev.updateStateImageOnServer(image)
             dev.setErrorStateOnServer(None)
+        if created:
+            self._authorize_credentials()
         return created
 
     def _button_input(self, device_id):
@@ -472,7 +590,8 @@ class Plugin(indigo.PluginBase):
         with self.catalog_lock:
             supported = {entry["shellyId"] for entry in self.catalog.values() if entry["online"]}
             devices = {identity: self._device_label(entry) +
-                       (" [no supported channels]" if identity not in supported else "")
+                       (" [password required — use Set Device Password]" if entry.get("requiresPassword")
+                        else " [no supported channels]" if identity not in supported else "")
                        for identity, entry in self.discovered_devices.items() if entry["online"]}
         options = [(ALL_DEVICES, "All discovered Shelly devices")] + sorted(
             devices.items(), key=lambda item: item[1].casefold())
@@ -492,9 +611,22 @@ class Plugin(indigo.PluginBase):
         if not switches and not inputs and not dimmers:
             self.logger.warning("Select switches, dimmers and/or inputs before creating Indigo devices")
             return False
-        self._emit("create_devices", "", {"includeSwitches": bool(switches),
+        return self._emit("create_devices", "", {"includeSwitches": bool(switches),
                    "includeInputs": bool(inputs), "includeDimmers": bool(dimmers), "shellyId": values.get("shellyId") or ALL_DEVICES})
-        return True
+
+    def getCredentialDevices(self, filter="", valuesDict=None, typeId="", targetId=0):
+        with self.catalog_lock:
+            devices = {identity: self._device_label(entry) for identity, entry in self.discovered_devices.items()}
+        return [(NO_CHANNEL, "Select a Shelly device")] + sorted(devices.items(), key=lambda item: item[1].casefold())
+
+    def setDevicePassword(self, valuesDict=None, typeId=""):
+        values = valuesDict or {}
+        with self.catalog_lock:
+            valid = values.get("shellyId") in self.discovered_devices
+        if not valid or not isinstance(values.get("devicePassword", ""), str):
+            self.logger.warning("Select a discovered physical device and enter a local password")
+            return False
+        return self._emit("credentials", "", (values["shellyId"], values.get("devicePassword", "")))
 
     @staticmethod
     def _expected_device_type(props):

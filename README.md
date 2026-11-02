@@ -1,292 +1,168 @@
-# Shelly for Indigo
+# Shelly for Indigo — 0.2.0 beta
 
-An independent native Indigo plugin for local control of Shelly devices.
-No Home Assistant, MQTT broker or Shelly cloud account is required.
+Independent, local Shelly integration for Indigo using RPC over WebSockets.
+Discovery runs continuously; creating Indigo devices is an explicit action.
+No Shelly cloud account, MQTT broker or Home Assistant is required.
+This is a new project, not a fork of kw123/SHELLY.
 
-**Installable download:** [Shelly 0.1.12 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.12-alpha.1/Shelly-0.1.12.indigoPlugin.zip).
-The release asset and the repository's `Shelly.indigoPlugin` directory both
-include the libraries required for discovery and communication. You can install
-either bundle directly through Indigo.
+## Supported devices and channels
 
-**Status: development alpha.** Indigo 2026.1 hardware testing has confirmed
-Shelly discovery, RPC communication and button-input tracking. Physical output
-control is still awaiting validation; dimmer commands are tested with simulated
-hardware. New development targets Gen3 and Gen4. Existing Gen2 compatibility is
-retained; Gen1 implementation and Gen2-specific expansion are off the roadmap.
-See [hardware validation](docs/hardware-validation.md) for the current evidence. This is a new project, not a fork of kw123/SHELLY.
+New development targets **Gen3 and Gen4** Wi-Fi/Ethernet RPC devices. Existing
+Gen2 compatibility, including the Pro dimmer, is retained. Gen1 support and new
+Gen2-specific expansion are off the roadmap. Gen4 Zigbee-only operation is outside
+this implementation.
 
-## Initial alpha features
+| Shelly component | Indigo device | Functions |
+| --- | --- | --- |
+| `switch:*` | Shelly Switch | On, Off, Toggle; available power/voltage/current/energy |
+| `light:*` | Shelly Dimmer | On, Off, Toggle, absolute and relative brightness; available metering |
+| `input:*`, switch mode | Shelly Input | Reported binary position |
+| `input:*`, button mode | Shelly Input | Press/release position and native Button Pressed events |
 
-- Automatic IPv4 Bonjour discovery of Gen2–Gen4 RPC devices.
-- A plugin menu command to create selected Indigo switch/dimmer/input devices on demand.
-- Discovered-channel dropdowns in Indigo device dialogs, with automatic detail
-  population and duplicate validation. Discovery never creates devices implicitly.
-- Local Shelly-assigned names prefix internal IDs in selectors and newly created
-  Indigo names when available.
-- Indigo on/off/toggle control; WebSocket state notifications.
-- Version 0.1.10 adds native Shelly Dimmer devices, brightness
-  control and metering for Gen2–Gen4 `light:*` channels.
-- Momentary button input tracking: ON while held, OFF when released, independent
-  of the relay output.
-- Switch power, voltage, current and energy readings where provided by hardware.
-- Reconnect backoff, offline indication and periodic state reconciliation.
-- Stable channel identities across rediscovery and IP address changes.
-- Optional shared admin password; SHA-256 RPC authentication.
+Unsupported components are reported in diagnostics and omitted from channel
+selectors. Covers, color lights, standalone meters and sleeping sensors are not
+implemented. A physical Shelly may expose several independent channels; a relay
+output and its physical button can have separate Indigo devices.
 
-Gen4 devices must be running Shelly's Wi-Fi/Ethernet RPC firmware. Planned work
-focuses on Gen3/Gen4 covers, color/adjustable-white lights, standalone meters,
-analog inputs, click/long-press events and sleeping sensors. Gen1 is unsupported
-and off the roadmap. Existing Gen2 devices continue using the current RPC adapter.
-Unimplemented components are ignored. Devices are never automatically deleted. Unsupported fields do not produce fabricated readings.
+## Installation and setup
 
-## Requirements and installation
+Requires **Indigo 2026.1**, server API 3.9 and Python 3.13.
 
-Indigo **2026.1** (server API 3.9), Python 3.13, and LAN access to the devices.
-Bonjour discovery works on the local IPv4 multicast network; additional hosts
-can be specified when multicast does not cross subnets.
-
-1. Download the `.indigoPlugin.zip` archive from [GitHub Releases](https://github.com/berkinet/shelly-indigo/releases).
+1. Download the installable archive from [GitHub Releases](https://github.com/berkinet/shelly-indigo/releases).
 2. Extract it and double-click `Shelly.indigoPlugin` to install through Indigo.
-3. In the plugin preferences, enable discovery and enter the shared Shelly admin
-   password if required. Optional additional hosts are comma-separated hostnames
-   or IP addresses, with optional ports.
-4. Restart the plugin after changing connection preferences. Discovery runs continuously
-   and fills selectors as devices connect; it does not create Indigo devices.
-5. Choose **Shelly → Create Indigo Devices…** from the plugin menu, select one
-   Shelly or all discovered Shellys, choose switches, dimmers and/or inputs, then click
-   **Create Devices**. Inputs are unchecked initially.
+3. Enable discovery in the plugin preferences. Additional hosts can be entered for
+   devices outside the local IPv4 Bonjour multicast network.
+4. Choose **Plugins → Shelly → Create Indigo Devices…**, select a physical device
+   and the channel types to create. Inputs are initially unchecked.
 
-Test on a development Indigo installation first. Installing/enabling the plugin
-starts discovery and updates existing Indigo devices. Creating additional Indigo
-devices requires the menu command above or individually saving a New Device
-dialog. It does not change Shelly settings or operate outputs until you issue
-an Indigo action. This alpha
-supports one shared password, not different credentials for each physical unit.
-Indigo stores the password in plugin preferences; the UI masks it.
+Discovery alone never creates devices. The creation command preserves existing
+Indigo device IDs, names and bindings. An individual New Device dialog offers
+unassigned channels of the selected type; Edit Device retains its current binding,
+including while offline. Disabled devices reserve their channels. Deleting an
+Indigo device makes its channel available again on refresh.
 
-## Selecting a Shelly in Indigo
+Connection detail fields are read-only. New bindings require a discovered-channel
+selection; manually typing an address into those fields is not a supported
+configuration path. The plugin does not configure Shelly Wi-Fi, input mode, relay
+behavior or dimmer calibration. Provision a new unit onto the network first.
 
-New Device and Edit Device dialogs now include a **Shelly channel** dropdown.
-Choose the Shelly plugin and **Shelly Switch**, **Shelly Dimmer** or **Shelly Input**;
-the dropdown lists matching discovered channels. Selecting one fills its device
-ID, channel, host, model and generation. Click **Refresh discovered channels**
-if discovery completed after opening the dialog.
+## Passwords
 
-Discovery is always separate from creation. **Create Indigo Devices…** performs a
-one-time creation of missing channels for the chosen Shelly devices and channel
-types. From version 0.1.10, the physical-device selector also
-shows discovered units that have no supported channels, labeled **no supported
-channels**. Dimmer `light:*` outputs are now supported.
-If discovery finishes while the creation
-dialog is open, click **Refresh discovered devices** to reload its list without
-closing the dialog. Refresh preserves your choices and does not create devices.
-Debug logging records the exact ID/name choices supplied to Indigo whenever the
-list is generated. Rerun the creation command whenever you want to add more channels. Previously stored
-`autoCreate` preferences are ignored from v0.1.6; restarts, new discoveries and
-button events cannot create additional devices implicitly. Existing Indigo
-devices continue receiving updates, and their names and IDs are preserved.
+Unprotected devices need no password. For protected devices choose
+**Plugins → Shelly → Set Device Password…**, select the physical unit and enter its
+**local admin password**. This is not the Shelly cloud account password. The setting
+applies to every channel on that unit and does not change its hardware password.
+Saving a blank password explicitly selects no authentication for that unit.
 
-You can also create an individual device using the New Device dropdown.
-New Device lists only unassigned channels. Edit Device retains its own current
-channel, including while offline or before rediscovery; channels assigned to other
-Indigo devices are hidden. Disabled Indigo devices still reserve their channels.
-Deleting an Indigo device makes its channel selectable again on refresh. Hiding
-is per channel: assigning a switch or dimmer does not hide unused inputs on the
-same physical Shelly. Validation still prevents duplicate saves if another dialog
-claims a channel after the list was opened. From 0.1.12, manually entering an
-already assigned device ID/channel also names the existing Indigo device and its
-ID in the error. New bindings still require a dropdown selection; filling the
-detail fields alone does not create a manually configured connection.
-The selector offers switches, dimmers,
-binary inputs and button inputs; unsupported components are omitted.
+Passwords are masked in the menu and stored in Indigo preferences, not encrypted
+by this plugin. They are never included in diagnostic logs or release files.
+An existing legacy shared password remains a fallback for saved Indigo bindings
+and explicitly entered hosts. Newly discovered, unassigned units never receive
+that shared credential automatically. A protected discovery remains visible with
+a password-required label until its credential is configured.
 
-### Names assigned in Shelly
+The worker checks public device identity before authenticated requests and checks
+challenge realms against that identity. Digest authentication does not provide
+cryptographic server identity or encrypt `ws://` traffic. This integration assumes
+a trusted home LAN; a spoofed matching device ID/realm is not defeated by those
+consistency checks. Distinct device passwords limit credential reuse.
 
-The plugin reads the device's local configured name from
-`Sys.GetConfig → device.name`, the name stored on the device and exposed through
-its web interface. When populated, new Indigo names use the format
-`Garden Gate (shelly…ID) input:0`. If unset, the internal ID is used. Selectors
-refresh local names during normal status reconciliation; changing a Shelly name
-does not rename existing Indigo devices.
+## Names and device state
 
-A name assigned in the Shelly app is usable here when it is also stored as the
-device's local name. Labels kept only in the cloud account are not exposed by
-this local name field. This plugin does not connect to the Shelly cloud account
-or retrieve app-only cloud labels. Read-only checks of all 12 devices discovered
-on the owner's network returned null device names and null input/switch/light
-channel names. If friendly names are visible in the app, they are not being
-exposed in those local configuration fields. No names or settings were changed.
+Names configured locally on the device prefix internal IDs in new Indigo names
+and selectors. The local API may not expose labels stored only in the Shelly app's
+cloud account. Existing Indigo names are preserved.
 
-See [Shelly's system configuration API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys/).
+Output state changes only from device reports. Commands wake the worker immediately
+and verify only the affected output; they do not fetch all configuration or sample
+Modbus after each action. Relative dimmer actions are resolved in execution order,
+so successive increments accumulate. Brightness displays 0% while off without
+changing the Shelly's retained turn-on level.
 
-### Device type and channel must match
+A lightweight status read runs every 15 seconds for reconciliation and detection
+of silent connections. Configuration is refreshed every 60 seconds and when a
+configuration-revision change is observed. A failed idle connection is normally
+detected within the heartbeat interval plus the eight-second RPC timeout; operating
+system connection errors can detect it sooner. This is not a hard bound while a
+configuration read or another RPC is already in progress.
 
-Use **Shelly Switch** for `switch:0` (relay and metering) and **Shelly Input** for
-`input:0` (physical input/button). Changing a relay's Indigo type to Shelly Input
-can leave its old relay binding behind. If this happened in an older alpha,
-restore that device's type to Shelly Switch and select its switch channel; use
-the separately created input device for the button.
+Reconnection uses bounded backoff. Commands expire after ten seconds in the worker
+queue and are discarded on disconnect; uncertain actions are never replayed.
+Indigo control callbacks enqueue requests; later failures appear in the Event Log,
+not as synchronous script exceptions. Universal status requests are coalesced by
+physical device. Repeated identical outage warnings move to Debug until recovery.
 
-From v0.1.5 the plugin clears incompatible selections when changing device type,
-rejects invalid saved bindings, and blocks updates/control for inconsistent
-existing devices with a message explaining the required type. State definitions
-are refreshed for switches, dimmers and inputs on startup and when needed before an
-update; existing valid device IDs and names are preserved.
+## Momentary buttons and triggers
 
-## Dimmers (from 0.1.10)
+Use the separate **Shelly Input** channel for physical press/release state. The
+relay or dimmer channel continues to report its actual output. The plugin leaves
+hardware relay behavior unchanged.
 
-Choose **Shelly Dimmer** in New Device to select an unassigned `light:*` output.
-The existing Gen3 dimmer and Gen2 Pro dimmer use this component type. Alternatively,
-choose **Shelly → Create Indigo Devices…** with **Dimmers** checked to create missing
-outputs. Discovery alone creates nothing. Existing Indigo devices and names are
-preserved.
+Button-mode RPC status is normally null. For a Gen4 non-inverted button with
+Modbus already enabled, an identity-checked, read-only sample can establish its
+position at startup and during configuration reconciliation. The plugin never
+enables Modbus. Other cases use live press/release events; a missing sample stays
+**Unknown**, not an assumed OFF or a disabled/error device. `stateKnown` indicates
+whether the retained raw `onOffState` is currently meaningful.
 
-Dimmers support Indigo On, Off, Toggle, Set Brightness, Brighten By and Dim By,
-plus status and energy-update requests. Commands use `Light.Set`/`Light.Toggle`;
-Indigo state changes only when device reports arrive. Brightness is displayed as
-0% when off, even if Shelly retains a nonzero level for its next turn-on. Setting
-0% turns the output off without overwriting that retained level. Relative changes
-use the latest reported level, limited to 0–100%. Available power, voltage,
-current and energy readings are exposed alongside brightness.
+Choose the plugin's **Button Pressed** trigger event and select an existing
+button-mode input. Accepted live presses execute enabled triggers with their
+Indigo conditions honored. Setup events and physical samples do not fire triggers.
+UTC clock adjustments do not determine event order; connection lifetime and TCP
+receive order do. Duplicate tracking is bounded and resets with a backwards clock
+step or reconnection.
 
-The plugin does not configure or calibrate dimmers. Physical control still needs
-hardware validation; automated tests use an Indigo double and a localhost Shelly
-WebSocket simulator. Color/adjustable-white (`rgb`, `rgbw`, `cct`) components and
-Gen1 dimmers remain outside this implementation.
+## Logging and recovery
 
-See [Shelly's Light API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light/).
+The Event Log preference offers **Info** and **Debug** and applies immediately.
+Discovery, queries and detailed inventory summaries use Debug; warnings and errors
+remain visible at both levels. The plugin file log retains Debug diagnostics.
+Restart after changing discovery, additional-host or legacy-password preferences.
+Per-device password changes reconnect that unit immediately.
 
-## Momentary buttons
+Physical identities survive DHCP changes. Old connection messages are fenced by
+connection generation. Vacated endpoints are probed for replacement units without
+moving the same unit back through an alternate address. Unassigned unreachable
+endpoints expire after fifteen minutes without rediscovery; configured hosts keep
+retrying. An unexpected Indigo concurrent-thread restart rebuilds communication.
 
-For a Shelly configured with Input type **Button**, use its separate `input:0`
-Indigo device to monitor the physical button. The input becomes ON on `btn_down`
-and OFF on `btn_up`. The `switch:0` device continues showing the relay output,
-which may stay ON after the button is released, depending on Shelly settings.
-The plugin does not change those settings or send relay commands when tracking
-button presses.
+Queues are bounded. A rejected UI request is logged. Event-queue overload causes a
+visible connection reset and resynchronization instead of indefinitely blocking
+network readers; queued controls are discarded and event delivery during overload
+cannot be guaranteed.
 
-Shelly button mode reports `state: null` through the regular RPC status call.
-For Gen4 devices with Modbus already enabled, the plugin can also sample the
-physical input at startup/reconnect and during reconciliation. It verifies the
-Modbus device MAC against RPC identity before using the reading. This optional
-path currently covers non-inverted button inputs at the standard RPC endpoint
-(port 80) with reachable Modbus port 502. It never enables Modbus, changes device
-configuration or sends write commands.
+## Validation and development
 
-A readable binary RPC state or verified Modbus bit establishes ON/OFF immediately.
-Otherwise, the input displays **Unknown** with a neutral icon and `stateKnown`
-false until a press or release arrives. Unknown position is not a disabled device
-or a communication error. No assumed OFF state or fabricated release timer is
-used. Real connection failures still appear as errors. Normal RPC null polls
-preserve a known press/release state.
-
-The `inputStatus` display reports On, Off, Unknown or Connecting. Automations
-using the raw `onOffState` should also check `stateKnown` when startup or missing
-readings matter: the last raw binary value is retained while unknown, with no
-fake state-change event. Gen2/Gen3, inverted inputs, disabled/unreachable Modbus
-and failed identity verification use the event-based fallback.
-
-See [Shelly's Input API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input/)
-and [Modbus API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Modbus/)
-for the status and input-register semantics.
-
-### Button Pressed event (from 0.1.10)
-
-Create an Indigo trigger, choose the **Shelly → Button Pressed** event, then select
-an existing **Shelly Input** configured in button mode. Add a **Toggle** action for
-the Indigo device you want to control. Indigo evaluates the trigger's conditions
-normally. Disable an older input-state-change trigger for the same action to
-avoid toggling twice.
-
-The event fires once for each live physical press, independently of the relay.
-Release and click/long-press classifications do not fire it. Startup/reconnect
-samples and notifications buffered during connection setup update input state
-without firing this event. It uses the existing input device; no additional
-Indigo device is created. Available in 0.1.10 and later.
-
-## Logging (from 0.1.10)
-
-In **Plugins → Shelly → Configure…**, choose **Info** (the default) or **Debug**
-for the **Event Log level**. Saving applies the change immediately; cancelling
-leaves the level unchanged. Connection preference changes still need a restart.
-
-Info shows normal activity, including explicit device creation, plus warnings
-and errors. Debug also shows discovery startup, discovered endpoints and device
-queries. A Debug query summary lists all reported component/service names and
-supported channels, existing Indigo assignments (including device IDs/names),
-and channels still unassigned. From 0.1.11, an already configured channel is no
-longer described as available for creation. It is logged on connection and
-when that summary changes, rather than on every unchanged poll. Raw status and
-configuration values are not dumped.
-
-Warnings identify omitted device channels and their reasons (unsupported type,
-unsupported input mode or disabled input), even if other channels are supported.
-A Shelly with no supported channels also produces a warning. Warnings remain
-visible at Info and Debug, but the same problem is not repeated on routine polls
-or unchanged reconnects. A changed or resolved problem updates that suppression.
-Wi-Fi, Cloud and other services appear in the Debug summary without individual
-unsupported-device warnings. From 0.1.11, `infino:*` also stays in Debug inventory
-without per-channel warnings. In read-only checks it reported only an ID and was
-disabled, with reporting interval/UDP configuration; its exact purpose remains
-unconfirmed. Unsupported-channel warnings identify only the omitted channels and
-retain the supported/unassigned list. A separate warning identifies devices with
-no supported channels. All queried devices remain in the discovery menu.
-The plugin's separate log file always includes Debug messages, regardless
-of the Event Log setting. Available in 0.1.10 and later.
-
-## Troubleshooting discovery
-
-Gen2–Gen4 discovery is implemented. Gen1 discovery is off the roadmap; new
-development targets Gen3/Gen4 while retaining current Gen2 compatibility.
-
-If Indigo logs `Bonjour discovery unavailable (ModuleNotFoundError)`, check the
-installed `Shelly.indigoPlugin/Contents/Packages` directory. It must contain
-`zeroconf`, `ifaddr` and `websocket`, along with their distribution metadata.
-An installed copy lacking this directory cannot discover or communicate with
-devices. From v0.1.2, dependencies are included in the checked-in bundle as well
-as the release asset. Install the complete current bundle to replace an older
-incomplete installation. Startup now reports the missing library explicitly.
-
-With the Event Log level set to **Debug**, after installation and restart look for `Shelly discovery started` in the Indigo
-Event Log. That confirms the browser started. A `Querying ...` message confirms
-successful device-information and status reads; it does not mean an Indigo device
-was created. `Created ...` messages appear when the explicit creation command adds
-a channel. If discovery
-starts but finds nothing, verify the devices are Gen2–Gen4 and that IPv4 Bonjour
-multicast can reach the Indigo server. Additional hosts can be entered in plugin
-preferences when multicast does not cross subnets.
-
-## Development
-
-Use zsh with Python 3.13:
+This beta includes offline behavioral regressions, a strict real WebSocket
+simulator, the actual plugin event loop with an Indigo contract double, authenticated
+exchanges, Ubuntu/macOS CI and source/archive loader checks. It has not been installed
+or enabled in the owner's live Indigo server as part of this release work.
+Native dialogs and physical output control still need the focused checks in
+[hardware validation](docs/hardware-validation.md). Simulations do not establish
+physical switching or metering accuracy.
 
 ```zsh
-python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements.txt
-.venv/bin/python -m unittest discover -s tests -v
-.venv/bin/python tools/build.py
-.venv/bin/python tools/check_bundle.py
+python3.13 -m unittest discover -s tests
+python3.13 tools/check_bundle.py --source
+python3.13 tools/build.py
+python3.13 tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.12.indigoPlugin.zip` using the checked-in portable
-Python dependencies and their license notices, with no network download needed.
-`tools/check_bundle.py --source` also validates direct installation of the
-repository bundle. To update dependencies, edit `requirements.txt`, run
-`.venv/bin/python tools/vendor.py`, then review and commit the resulting files.
+Tests import the same portable dependencies included in the plugin. Dependency
+versions and upstream source hashes are pinned; bundle contents are checked against
+`Contents/DEPENDENCIES.json`. To refresh them, use `tools/vendor.py`, then review and
+commit the dependencies, lock and manifest together. The hash lock covers upstream
+runtime archives; isolated source-build tooling is not a fully reproducible build
+or a vendored-library security audit.
 
-Tests use an Indigo API double and a real localhost WebSocket connection to a
-simulated Shelly; they never operate home devices. CI runs the same tests and
-validates both bundles, including executing the entry point without `__file__`
-as Indigo does.
+For a release, commit and push the intended source, wait for the complete CI
+workflow, then run `python3.13 tools/release.py --publish`. It reruns the checks,
+builds a fresh archive and publishes a beta prerelease with a source-commit and
+SHA-256 manifest. Existing release assets are not overwritten.
 
-For a read-only network diagnostic using only the bundled libraries, run:
+See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
+[beta release notes](docs/release-0.2.0-beta.1.md) and [dependency licenses](docs/third-party.md).
 
-```zsh
-.venv/bin/python -I -S tools/probe_discovery.py --read-status
-```
+## License
 
-This discovers endpoints and reads identity/status without creating Indigo
-devices or sending output-control commands.
-
-See [architecture and milestones](docs/architecture.md) and
-[third-party licenses](docs/third-party.md). Project code is [MIT licensed](LICENSE).
+MIT. Bundled dependencies retain their upstream licenses.

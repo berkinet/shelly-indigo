@@ -3,14 +3,13 @@ import types
 import unittest
 from unittest.mock import Mock
 import support
-import test_indigo as host
+from indigo_host import IndigoHost
 
 
 class DimmerTests(unittest.TestCase):
     def setUp(self):
-        fixture = host.IndigoTests()
-        fixture.setUp()
-        self.addCleanup(fixture.tearDown)
+        fixture = IndigoHost()
+        self.addCleanup(fixture.close)
         self.plugin, self.devices = fixture.plugin, fixture.devices
         self.info, self.address = {**fixture.info, 'name': 'Séjour chandelier'}, fixture.address
         self.status = {**fixture.status,
@@ -88,10 +87,10 @@ class DimmerTests(unittest.TestCase):
                     ('Toggle', None, 'Light.Toggle', {'id': 1}),
                     ('SetBrightness', 65, 'Light.Set', {'id': 1, 'on': True, 'brightness': 65}),
                     ('SetBrightness', 0, 'Light.Set', {'id': 1, 'on': False}),
-                    ('BrightenBy', 10, 'Light.Set', {'id': 1, 'on': True, 'brightness': 45}),
-                    ('DimBy', 10, 'Light.Set', {'id': 1, 'on': True, 'brightness': 25}),
-                    ('BrightenBy', 80, 'Light.Set', {'id': 1, 'on': True, 'brightness': 100}),
-                    ('DimBy', 50, 'Light.Set', {'id': 1, 'on': False})]
+                    ('BrightenBy', 10, 'Light.Adjust', {'id': 1, 'delta': 10}),
+                    ('DimBy', 10, 'Light.Adjust', {'id': 1, 'delta': -10}),
+                    ('BrightenBy', 80, 'Light.Adjust', {'id': 1, 'delta': 80}),
+                    ('DimBy', 50, 'Light.Adjust', {'id': 1, 'delta': -50})]
         for action, value, method, params in expected:
             self.plugin.actionControlDevice(types.SimpleNamespace(deviceAction=action, actionValue=value), dev)
             self.plugin._handle(*self.plugin.events.get_nowait())

@@ -31,4 +31,26 @@
       </Field>
     </ConfigUI>
   </MenuItem>
+  <MenuItem id="setDevicePassword">
+    <Name>Set Device Password…</Name>
+    <CallbackMethod>setDevicePassword</CallbackMethod>
+    <ButtonTitle>Save Password</ButtonTitle>
+    <ConfigUI>
+      <Field id="shellyId" type="menu" defaultValue="_none_">
+        <Label>Shelly device:</Label>
+        <List class="self" method="getCredentialDevices" dynamicReload="true" />
+      </Field>
+      <Field id="refreshCredentialDevices" type="button">
+        <Label />
+        <Title>Refresh discovered devices</Title>
+        <CallbackMethod>refreshDiscoveredDevices</CallbackMethod>
+      </Field>
+      <Field id="devicePassword" type="textfield" secure="true" defaultValue="">
+        <Label>Local device password:</Label>
+      </Field>
+      <Field id="credentialHelp" type="label">
+        <Label>Sets the local admin password used for this physical Shelly and all its channels. This does not change the password on the Shelly. Blank explicitly selects no password. Stored passwords are masked in this dialog and kept in Indigo preferences. A new discovered device never receives the shared password automatically.</Label>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
 </MenuItems>

@@ -16,8 +16,10 @@
 - Roadmap decision (2 November 2026): target Gen3 and Gen4 for new development.
   Gen1 implementation is removed from the roadmap. Retain existing Gen2
   compatibility and regression coverage, with no planned Gen2-specific expansion.
-- Per-device credentials are the intended design; the alpha's shared password
-  preference is temporary.
+- Per-device credentials are stored by physical identity in Indigo preferences.
+  Keep legacy shared-password fallback limited to existing Indigo bindings and
+  explicitly configured hosts; never send it automatically to new unassigned
+  Bonjour discoveries.
 
 - Discovery must run continuously without creating Indigo devices implicitly.
   Create devices only through the explicit plugin menu command or an individual

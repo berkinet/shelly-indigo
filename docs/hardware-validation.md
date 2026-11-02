@@ -1,5 +1,33 @@
 # Hardware validation
 
+## Current status — 0.2.0 beta preparation, 2 November 2026
+
+The beta has not been installed or enabled in the owner's live Indigo server by
+this development session. No physical output or hardware setting was changed.
+Historical observations below apply to the versions recorded there, not automatically
+to the beta. The owner subsequently reported successful startup input behavior in
+the seeded chat; the exact installed version and complete retest conditions were
+not recorded. That confirmation is retained as user evidence rather than promoted
+to a repeatable beta validation result.
+
+| Area | Existing evidence | Beta validation still required |
+| --- | --- | --- |
+| Gen3/Gen4 discovery, creation, local names | Owner logs and earlier read-only probes | Recheck discovery, explicit creation and names after upgrade |
+| Gen4 input press/release and startup position | Owner reported working behavior; earlier RPC/Modbus reads | Repeat held/released restart checks on the installed beta |
+| Native Button Pressed trigger | Owner reported trigger-based toggling; simulator verifies native event adapter | Check beta native event, conditions, single press and clock/network recovery |
+| Gen3 dimmer and existing Gen2 Pro dimmer | Earlier read-only state/metering translation | Physical On/Off/Toggle, relative steps, external changes and meter comparison |
+| Per-device passwords | Strict authenticated simulator; identity and realm rejection tests | Protected-device menu, persistence and successful native operation |
+| Native dialogs | XML contract validation and host double | Open each device type, confirm read-only details, refresh and save; password menu |
+| DHCP/address reuse and communication failure | Deterministic registry and real loopback transport tests | Router/network interruption and reconnect with actual units |
+| Release installation | Isolated source/archive loader checks and portable dependency integrity | Install archive in Indigo and confirm existing names, IDs and bindings remain |
+
+For each beta check, record installed version, Indigo version, device model and
+firmware, starting state, action, observed state and relevant log. Physical control
+checks should be performed on suitable test outputs under the owner's control.
+The beta label does not imply these unperformed checks have passed.
+
+## Historical validation records
+
 ## 2 November 2026 — plugin 0.1.2, Indigo 2026.1
 
 The owner's Indigo Event Log confirms:

@@ -39,7 +39,7 @@ class ProtocolTests(unittest.TestCase):
     def test_reject_credentials_urls_and_paths(self):
         self.assertEqual(endpoint('shelly.local'), 'shelly.local:80')
         self.assertEqual(endpoint('[::1]:8080'), '[::1]:8080')
-        for value in ('http://host', 'user:pass@host', 'host/rpc', 'host?x=y', '', 'host:70000'):
+        for value in ('http://host', 'user:pass@host', 'host/rpc', 'host?x=y', '', 'host:70000', 'host:0'):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 endpoint(value)
 
@@ -69,7 +69,7 @@ class ProtocolTests(unittest.TestCase):
         error = {'id': 1, 'error': {'code': 401, 'message': json.dumps(challenge)}}
         sock = Socket([error, error])
         with self.assertRaises(AuthenticationError):
-            Session(sock, lambda *a: None, 'wrong').call('Switch.Set', {'id': 0, 'on': True})
+            Session(sock, lambda *a: None, 'wrong', identity='unit').call('Switch.Set', {'id': 0, 'on': True})
         self.assertEqual(len(sock.sent), 2)
         self.assertIn('auth', sock.sent[1])
         sock = Socket([error])
@@ -100,7 +100,9 @@ class ProtocolTests(unittest.TestCase):
         inventory.apply_input_event({'component': 'input:0', 'event': 'btn_up', 'ts': 11})
         self.assertFalse(button.states()['onOffState'])
         self.assertTrue(button.states()['stateKnown'])
-        self.assertIsNone(inventory.apply_input_event({'component': 'input:0', 'event': 'btn_down', 'ts': 9}))
+        self.assertIsNotNone(inventory.apply_input_event({'component': 'input:0', 'event': 'btn_down', 'ts': 9}))
+        self.assertTrue(button.states()['onOffState'])
+        inventory.apply_input_event({'component': 'input:0', 'event': 'btn_up', 'ts': 9.1})
         self.assertFalse(button.states()['onOffState'])
         inventory.invalidate_buttons()
         self.assertFalse(button.states()['stateKnown'])
@@ -137,3 +139,12 @@ class ProtocolTests(unittest.TestCase):
         for value in (None, True, -1, 101, float('nan'), float('inf'), '50'):
             channel, = Inventory().merge({'light:0': {'output': True, 'brightness': value}})
             self.assertNotIn('brightnessLevel', channel.states())
+
+
+    def test_clock_rollback_can_repeat_an_earlier_timestamp_without_losing_a_new_press(self):
+        inventory = Inventory()
+        channel, = inventory.merge({'input:0': {'state': None, '_inputType': 'button'}})
+        for event, timestamp in [('btn_down', 100), ('btn_up', 101), ('btn_down', 100), ('btn_up', 100.1)]:
+            self.assertIsNotNone(inventory.apply_input_event({'component': 'input:0', 'event': event, 'ts': timestamp}))
+        self.assertFalse(channel.states()['onOffState'])
+        self.assertIsNone(inventory.apply_input_event({'component': 'input:0', 'event': 'btn_up', 'ts': 100.1}))

@@ -1,3 +1,5 @@
 from pathlib import Path
 import sys
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin'))
+bundle = Path(__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents'
+sys.path.insert(0, str(bundle / 'Packages'))
+sys.path.insert(0, str(bundle / 'Server Plugin'))

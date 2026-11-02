@@ -16,19 +16,19 @@
       <Field id="channelHelp" type="label">
         <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
-      <Field id="shellyId" type="textfield" readOnly="true">
+      <Field id="shellyId" type="textfield" readonly="true">
         <Label>Shelly ID:</Label>
       </Field>
-      <Field id="component" type="textfield" readOnly="true">
+      <Field id="component" type="textfield" readonly="true">
         <Label>Channel:</Label>
       </Field>
-      <Field id="host" type="textfield" readOnly="true">
+      <Field id="host" type="textfield" readonly="true">
         <Label>Host:</Label>
       </Field>
-      <Field id="model" type="textfield" readOnly="true">
+      <Field id="model" type="textfield" readonly="true">
         <Label>Model:</Label>
       </Field>
-      <Field id="generation" type="textfield" readOnly="true">
+      <Field id="generation" type="textfield" readonly="true">
         <Label>Generation:</Label>
       </Field>
       <Field id="address" type="textfield" hidden="true">
@@ -79,19 +79,19 @@
       <Field id="channelHelp" type="label">
         <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
-      <Field id="shellyId" type="textfield" readOnly="true">
+      <Field id="shellyId" type="textfield" readonly="true">
         <Label>Shelly ID:</Label>
       </Field>
-      <Field id="component" type="textfield" readOnly="true">
+      <Field id="component" type="textfield" readonly="true">
         <Label>Channel:</Label>
       </Field>
-      <Field id="host" type="textfield" readOnly="true">
+      <Field id="host" type="textfield" readonly="true">
         <Label>Host:</Label>
       </Field>
-      <Field id="model" type="textfield" readOnly="true">
+      <Field id="model" type="textfield" readonly="true">
         <Label>Model:</Label>
       </Field>
-      <Field id="generation" type="textfield" readOnly="true">
+      <Field id="generation" type="textfield" readonly="true">
         <Label>Generation:</Label>
       </Field>
       <Field id="address" type="textfield" hidden="true">
@@ -142,19 +142,19 @@
       <Field id="channelHelp" type="label">
         <Label>Shows unassigned channels and this device’s current channel. Edit an existing Indigo device to change its assigned channel.</Label>
       </Field>
-      <Field id="shellyId" type="textfield" readOnly="true">
+      <Field id="shellyId" type="textfield" readonly="true">
         <Label>Shelly ID:</Label>
       </Field>
-      <Field id="component" type="textfield" readOnly="true">
+      <Field id="component" type="textfield" readonly="true">
         <Label>Channel:</Label>
       </Field>
-      <Field id="host" type="textfield" readOnly="true">
+      <Field id="host" type="textfield" readonly="true">
         <Label>Host:</Label>
       </Field>
-      <Field id="model" type="textfield" readOnly="true">
+      <Field id="model" type="textfield" readonly="true">
         <Label>Model:</Label>
       </Field>
-      <Field id="generation" type="textfield" readOnly="true">
+      <Field id="generation" type="textfield" readonly="true">
         <Label>Generation:</Label>
       </Field>
       <Field id="address" type="textfield" hidden="true">

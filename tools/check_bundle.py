@@ -1,5 +1,6 @@
 """Validate installed source and release archives with an isolated Indigo-style loader."""
 from pathlib import Path
+from dependencies import validate as validate_dependencies
 import argparse
 import ast
 import plistlib
@@ -12,15 +13,35 @@ from xml.etree import ElementTree
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def validate_ui(server):
+    tree = ast.parse((server / 'plugin.py').read_text())
+    plugin = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == 'Plugin')
+    methods = {node.name for node in plugin.body if isinstance(node, ast.FunctionDef)}
+    for path in server.glob('*.xml'):
+        root = ElementTree.parse(path).getroot()
+        for field in root.iter('Field'):
+            assert 'readOnly' not in field.attrib, f'{path.name}: use documented readonly attribute'
+            for key in ('readonly', 'secure'):
+                if key in field.attrib:
+                    assert field.get(key) in ('true', 'false'), f'{path.name}: invalid {key}'
+            callback = field.get('callbackMethod')
+            assert callback is None or callback in methods, f'{path.name}: missing callback {callback}'
+        for callback in root.iter('CallbackMethod'):
+            assert callback.text in methods, f'{path.name}: missing callback {callback.text}'
+        for listing in root.iter('List'):
+            if listing.get('class') == 'self':
+                assert listing.get('method') in methods, f'{path.name}: missing dynamic-list method'
+
+
 def validate(bundle):
     info = plistlib.loads((bundle / 'Info.plist').read_bytes())
     assert info['ServerApiVersion'] == '3.9'
-    for xml in (bundle / 'Server Plugin').glob('*.xml'):
-        ElementTree.parse(xml)
+    assert info['PluginVersion'] == info['CFBundleVersion']
+    validate_ui(bundle / 'Server Plugin')
     for source in (bundle / 'Server Plugin').rglob('*.py'):
         ast.parse(source.read_text())
+    validate_dependencies(bundle)
     packages = bundle / 'Packages'
-    assert not list(packages.rglob('*.so')), 'Native extension found'
     for distribution in ('websocket_client', 'zeroconf', 'ifaddr'):
         metadata, = packages.glob(f'{distribution}-*.dist-info')
         assert any(p.name.upper().startswith(('LICENSE', 'COPYING'))

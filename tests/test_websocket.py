@@ -1,88 +1,13 @@
 """Exercise the actual WebSocket client against a small local Shelly simulator."""
-import base64
-import hashlib
-import json
 import queue
 import socketserver
-import struct
 import threading
 import unittest
 import support
 from shelly.worker import Worker
 
 
-class Simulator(socketserver.StreamRequestHandler):
-    def handle(self):
-        self.connection.settimeout(5)
-        self.rfile.readline()
-        headers = {}
-        while line := self.rfile.readline().strip():
-            key, value = line.decode().split(':', 1)
-            headers[key.lower()] = value.strip()
-        accept = base64.b64encode(hashlib.sha1((headers['sec-websocket-key'] +
-                                 '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
-        self.wfile.write(('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\n'
-                          'Connection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n').encode())
-        output = False
-        light = {'id': 0, 'output': False, 'brightness': 70}
-        while True:
-            try:
-                head = self.rfile.read(2)
-            except (ConnectionResetError, TimeoutError):
-                return
-            if len(head) < 2 or head[0] & 15 == 8:
-                return
-            size = head[1] & 127
-            if size == 126:
-                size = struct.unpack('!H', self.rfile.read(2))[0]
-            mask = self.rfile.read(4)
-            raw = self.rfile.read(size)
-            request = json.loads(bytes(b ^ mask[i % 4] for i, b in enumerate(raw)))
-            method = request['method']
-            self.server.methods.put(method)
-            if method == 'Shelly.GetDeviceInfo':
-                result = {'id': 'shelly-simulator', 'gen': getattr(self.server, 'gen', 3), 'model': 'test'}
-                if result['gen'] == 4:
-                    result['mac'] = 'E4B06365AF10'
-            elif method == 'Modbus.GetConfig':
-                result = {'enable': True}
-            elif method == 'Input.GetConfig':
-                if getattr(self.server, 'button', False) and not getattr(self, 'pressed_sent', False):
-                    self.pressed_sent = True
-                    self.send_frame({'method': 'NotifyEvent', 'params': {'events': [
-                        {'component': 'input:0', 'event': 'btn_down', 'ts': 1}]}})
-                result = {'id': 0, 'type': 'button', 'enable': True}
-            elif method == 'Input.GetStatus':
-                self.send_frame({'method': 'NotifyEvent', 'params': {'events': [
-                    {'component': 'input:0', 'event': 'btn_up', 'ts': 2}]}})
-                result = {'id': 0, 'state': None}
-            elif method in ('Light.Set', 'Light.Toggle'):
-                params = request['params']
-                if method == 'Light.Toggle':
-                    light['output'] = not light['output']
-                else:
-                    if 'on' in params:
-                        light['output'] = params['on']
-                    if 'brightness' in params:
-                        light['brightness'] = params['brightness']
-                self.send_frame({'method': 'NotifyStatus', 'params': {'light:0': dict(light)}})
-                result = None
-            elif method == 'Switch.Set':
-                output = request['params']['on']
-                self.send_frame({'method': 'NotifyStatus', 'params': {'switch:0': {'output': output}}})
-                result = {'was_on': not output}
-            else:
-                result = {'switch:0': {'id': 0, 'output': output}}
-                if getattr(self.server, 'dimmer', False):
-                    result['light:0'] = dict(light)
-                if getattr(self.server, 'button', False):
-                    result['input:0'] = {'id': 0, 'state': None}
-            self.send_frame({'id': request['id'], 'result': result})
-
-    def send_frame(self, frame):
-        raw = json.dumps(frame).encode()
-        header = bytes([129, len(raw)]) if len(raw) < 126 else bytes([129, 126]) + struct.pack('!H', len(raw))
-        self.wfile.write(header + raw)
+from simulator import Simulator, next_event
 
 
 class WebsocketTests(unittest.TestCase):
@@ -96,11 +21,11 @@ class WebsocketTests(unittest.TestCase):
         worker = Worker(f'127.0.0.1:{server.server_address[1]}', lambda *args: events.put(args))
         try:
             worker.start()
-            kind, _, data = events.get(timeout=5)
+            kind, _, data = next_event(events, lambda event: event[0] != 'identified', timeout=5)
             self.assertEqual(kind, 'ready', data)
             self.assertEqual(data[0]['id'], 'shelly-simulator')
             worker.command('Switch.Set', {'id': 0, 'on': True})
-            kind, _, data = events.get(timeout=5)
+            kind, _, data = next_event(events, lambda event: event[0] != 'identified', timeout=5)
             self.assertEqual(kind, 'status', data)
             self.assertTrue(data['switch:0']['output'])
         finally:
@@ -123,15 +48,15 @@ class WebsocketTests(unittest.TestCase):
         worker = Worker(f'127.0.0.1:{server.server_address[1]}', lambda *args: events.put(args))
         try:
             worker.start()
-            kind, _, data = events.get(timeout=5)
+            kind, _, data = next_event(events, lambda event: event[0] != 'identified', timeout=5)
             self.assertEqual(kind, 'ready', data)
             self.assertEqual(data[1]['input:0']['_inputType'], 'button')
-            kind, _, data = events.get(timeout=5)
+            kind, _, data = next_event(events, lambda event: event[0] != 'identified', timeout=5)
             self.assertEqual(kind, 'event', data)
             self.assertEqual(data['events'][0]['event'], 'btn_down')
             self.assertTrue(data['_initial'])
             worker.command('Input.GetStatus', {'id': 0})
-            kind, _, data = events.get(timeout=5)
+            kind, _, data = next_event(events, lambda event: event[0] != 'identified', timeout=5)
             self.assertEqual(kind, 'event', data)
             self.assertEqual(data['events'][0]['event'], 'btn_up')
             self.assertNotIn('_initial', data)
@@ -165,7 +90,7 @@ class WebsocketTests(unittest.TestCase):
         with patch('shelly.worker.read_button_inputs', return_value={0: False}):
             try:
                 worker.start()
-                kind, _, payload = events.get(timeout=5)
+                kind, _, payload = next_event(events, lambda event: event[0] != 'identified', timeout=5)
                 self.assertEqual(kind, 'ready', payload)
                 self.assertIs(payload[1]['input:0']['_buttonState'], False)
                 # The simulated press during Input.GetConfig happened before the
@@ -190,7 +115,7 @@ class WebsocketTests(unittest.TestCase):
         worker = Worker(f'127.0.0.1:{server.server_address[1]}', lambda *args: events.put(args))
         try:
             worker.start()
-            kind, _, data = events.get(timeout=5)
+            kind, _, data = next_event(events, lambda event: event[0] != 'identified', timeout=5)
             self.assertEqual(kind, 'ready', data)
             self.assertEqual(data[1]['light:0']['brightness'], 70)
             self.assertFalse(data[1]['light:0']['output'])
@@ -199,12 +124,9 @@ class WebsocketTests(unittest.TestCase):
                     ('Light.Toggle', {'id': 0}, (False, 65))):
                 worker.command(method, params)
                 # A full reconciliation can follow the preceding notification.
-                while True:
-                    kind, _, data = events.get(timeout=5)
-                    self.assertEqual(kind, 'status', data)
-                    light = data.get('light:0', {})
-                    if (light.get('output'), light.get('brightness')) == expected:
-                        break
+                next_event(events, lambda event: event[0] in ('status', 'snapshot') and
+                           (event[2].get('light:0', {}).get('output'),
+                            event[2].get('light:0', {}).get('brightness')) == expected, timeout=5)
         finally:
             worker.stop()
             worker.join(5)

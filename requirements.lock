@@ -1,0 +1,9 @@
+# Upstream PyPI source/pure-wheel hashes. tools/vendor.py builds zeroconf without native code.
+websocket-client==1.9.0 \
+    --hash=sha256:9e813624b6eb619999a97dc7958469217c3176312b3a16a4bd1bc7e08a46ec98 \
+    --hash=sha256:af248a825037ef591efbf6ed20cc5faa03d3b47b9e5a2230a529eeee1c1fc3ef
+zeroconf==0.148.0 \
+    --hash=sha256:03fcca123df3652e23d945112d683d2f605f313637611b7d4adf31056f681702
+ifaddr==0.2.0 \
+    --hash=sha256:085e0305cfe6f16ab12d72e2024030f5d52674afad6911bb1eee207177b8a748 \
+    --hash=sha256:cc0cbfcaabf765d44595825fb96a99bb12c79716b73b44330ea38ee2b0c4aed4

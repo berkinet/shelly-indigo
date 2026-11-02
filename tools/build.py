@@ -1,6 +1,6 @@
 """Build an installable plugin from checked-in source and portable dependencies."""
 from pathlib import Path
-from importlib.metadata import distributions
+from dependencies import validate
 import plistlib
 import shutil
 
@@ -11,17 +11,7 @@ BUNDLE = BUILD / SOURCE.name
 
 
 def main():
-    packages = SOURCE / 'Contents/Packages'
-    installed = {dist.metadata['Name'].lower().replace('_', '-'): dist.version
-                 for dist in distributions(path=[str(packages)])}
-    for requirement in (ROOT / 'requirements.txt').read_text().splitlines():
-        if not requirement.strip() or requirement.startswith('#'):
-            continue
-        name, version = requirement.split('==')
-        if installed.get(name.lower().replace('_', '-')) != version:
-            raise RuntimeError(f'Missing or outdated {name}; run tools/vendor.py and commit its output')
-    if list(packages.rglob('*.so')) or list(packages.rglob('*.dylib')):
-        raise RuntimeError('Portable dependencies contain native extensions')
+    validate(SOURCE / 'Contents')
     if BUNDLE.exists():
         shutil.rmtree(BUNDLE)
     shutil.copytree(SOURCE, BUNDLE, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))

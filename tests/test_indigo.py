@@ -1,6 +1,4 @@
-import importlib
 import logging
-from logging.handlers import BufferingHandler
 import sys
 import types
 import unittest
@@ -8,88 +6,15 @@ from unittest.mock import Mock, patch
 import support
 
 
-class Device:
-    def __init__(self, identifier, **kwargs):
-        self.id = identifier
-        self.pluginProps = kwargs['props']
-        self.deviceTypeId = kwargs['deviceTypeId']
-        self.name = kwargs['name']
-        self.enabled = True
-        self.states = {}
-        self.stateListOrDisplayStateIdChanged()
-        self.history = []
-        self.ui_values = {}
-        self.error = None
-    def updateStatesOnServer(self, states):
-        assert all(state['key'] in self.states for state in states), 'Undefined Indigo state update'
-        self.history.append({state['key']: state['value'] for state in states})
-        self.states.update({state['key']: state['value'] for state in states})
-    def updateStateOnServer(self, key, value, **kwargs):
-        assert key in self.states, f'Undefined Indigo state: {key}'
-        self.states[key] = value
-        if 'uiValue' in kwargs:
-            self.ui_values[key] = kwargs['uiValue']
-    def stateListOrDisplayStateIdChanged(self):
-        from pathlib import Path
-        from xml.etree import ElementTree
-        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/Devices.xml'
-        definition = ElementTree.parse(xml).find(f"Device[@id='{self.deviceTypeId}']/States")
-        defaults = {'Boolean': False, 'Number': 0.0, 'String': ''}
-        registered = {state.get('id'): defaults[state.findtext('ValueType')] for state in definition}
-        registered['onOffState'] = False
-        if self.deviceTypeId == 'shellyDimmer':
-            registered['brightnessLevel'] = 0
-        self.states = {key: self.states.get(key, default) for key, default in registered.items()}
-    def updateStateImageOnServer(self, image):
-        self.image = image
-    def setErrorStateOnServer(self, error):
-        self.error = error
-    def replacePluginPropsOnServer(self, props):
-        self.pluginProps = props
-
-
-class Devices(dict):
-    def iter(self, unused):
-        return iter(list(self.values()))
-    def create(self, **kwargs):
-        device = Device(len(self) + 1, **kwargs)
-        self[device.id] = device
-        return device
-
-
-class Base:
-    def __init__(self, unused_id, unused_name, unused_version, prefs):
-        self.pluginPrefs = prefs
-        self.logger = logging.getLogger('test-plugin')
-        self.indigo_log_handler = BufferingHandler(1000)
-        self.plugin_file_handler = BufferingHandler(1000)
-        self.logger.handlers = [self.indigo_log_handler, self.plugin_file_handler]
+from indigo_host import IndigoHost
 
 
 class IndigoTests(unittest.TestCase):
     def setUp(self):
-        self.devices = Devices()
-        module = types.SimpleNamespace(PluginBase=Base, devices=self.devices,
-                 triggers={}, trigger=types.SimpleNamespace(execute=Mock()),
-                 device=types.SimpleNamespace(create=self.devices.create),
-                 kProtocol=types.SimpleNamespace(Plugin='plugin'), Dict=dict,
-                 kDeviceAction=types.SimpleNamespace(**{name: name for name in (
-                     'TurnOn', 'TurnOff', 'Toggle', 'SetBrightness', 'BrightenBy', 'DimBy')}),
-                 kUniversalAction=types.SimpleNamespace(RequestStatus='RequestStatus', EnergyUpdate='EnergyUpdate'),
-                 kStateImageSel=types.SimpleNamespace(SensorOff='neutral', SensorOn='on'))
-        self.patcher = patch.dict(sys.modules, indigo=module)
-        self.patcher.start()
-        sys.modules.pop('plugin', None)
-        self.plugin = importlib.import_module('plugin').Plugin('id', 'name', 'version', {})
-        self.info = {'id': 'shelly-unit', 'model': 'test', 'gen': 3}
-        self.address = '192.0.2.1:80'
-        self.status = {'switch:0': {'output': True, 'apower': 10},
-                       'input:0': {'state': False}, 'input:1': {'state': None}}
-        self.plugin._handle('ready', self.address, (self.info, self.status))
-        self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
-    def tearDown(self):
-        self.patcher.stop()
-        sys.modules.pop('plugin', None)
+        self.host = IndigoHost()
+        self.addCleanup(self.host.close)
+        for name in ('devices', 'plugin', 'info', 'address', 'status'):
+            setattr(self, name, getattr(self.host, name))
 
     def test_explicit_creation_only_adds_supported_channels_and_avoids_duplicates(self):
         self.assertEqual(len(self.devices), 2)
@@ -386,7 +311,7 @@ class IndigoTests(unittest.TestCase):
         self.assertTrue(callback({'includeSwitches': True, 'includeInputs': False, 'shellyId': ''}, 'createDiscoveredDevices'))
         self.plugin._handle(*self.plugin.events.get_nowait())
         self.assertEqual(len(self.devices), 1)
-        dev = self.devices[1]
+        dev = next(iter(self.devices.values()))
         self.assertEqual(dev.name, 'Garden Gate (shelly-unit) switch:0')
         dev.name = 'My Indigo gate relay'
         self.plugin._handle('identity', self.address, {**info, 'name': 'Renamed in Shelly'})
@@ -394,7 +319,8 @@ class IndigoTests(unittest.TestCase):
         self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
         self.assertEqual(len(self.devices), 2)
         self.assertEqual(dev.name, 'My Indigo gate relay')
-        self.assertEqual(self.devices[2].name, 'Renamed in Shelly (shelly-unit) input:0')
+        self.assertEqual(next(d for d in self.devices.values() if d.deviceTypeId == 'shellyInput').name,
+                         'Renamed in Shelly (shelly-unit) input:0')
         self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
         self.assertEqual(len(self.devices), 2)
 
@@ -405,8 +331,8 @@ class IndigoTests(unittest.TestCase):
         self.plugin._handle('ready', address, (second, self.status))
         self.plugin._handle('create_devices', '', {'includeSwitches': False, 'includeInputs': True, 'shellyId': 'second-unit'})
         self.assertEqual(len(self.devices), 1)
-        self.assertEqual(self.devices[1].pluginProps['shellyId'], 'second-unit')
-        self.assertEqual(self.devices[1].pluginProps['component'], 'input:0')
+        self.assertEqual(next(iter(self.devices.values())).pluginProps['shellyId'], 'second-unit')
+        self.assertEqual(next(iter(self.devices.values())).pluginProps['component'], 'input:0')
         self.plugin._handle('status', address, {'switch:2': {'output': True}})
         self.assertEqual(len(self.devices), 1)
         with self.assertLogs('test-plugin', level='WARNING'):
@@ -534,11 +460,12 @@ class IndigoTests(unittest.TestCase):
         self._press_event('long_push', 2)
         self._press_event('btn_up', 3)
         self._press_event('single_push', 4)
-        self._press_event(timestamp=2)  # Older than the accepted release.
-        self.assertFalse(self.devices[2].states['onOffState'])
-        self.assertEqual(execute.call_count, 1)
-        self._press_event(timestamp=5)
+        self._press_event(timestamp=2)  # A backwards UTC adjustment must not disable the button.
+        self.assertTrue(self.devices[2].states['onOffState'])
         self.assertEqual(execute.call_count, 2)
+        self._press_event('btn_up', 2.5)
+        self._press_event(timestamp=5)
+        self.assertEqual(execute.call_count, 3)
 
     def test_startup_samples_and_buffered_events_never_fire_button_trigger(self):
         self._button_trigger()
