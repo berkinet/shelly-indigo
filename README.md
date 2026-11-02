@@ -31,7 +31,7 @@ See [hardware validation](docs/hardware-validation.md) for the current evidence.
 - Optional shared admin password; SHA-256 RPC authentication.
 
 Gen4 devices must be running Shelly's Wi-Fi/Ethernet RPC firmware. Gen1, covers,
-dimmers/lights, standalone meters, analog inputs, button events and sleeping
+dimmers/lights, standalone meters, analog inputs, click/long-press events and sleeping
 sensors are planned. Unimplemented components are ignored. Devices are never
 automatically deleted. Unsupported fields do not produce fabricated readings.
 
@@ -148,6 +148,20 @@ See [Shelly's Input API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAnd
 and [Modbus API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Modbus/)
 for the status and input-register semantics.
 
+### Button Pressed event (unreleased, source build 0.1.9)
+
+Create an Indigo trigger, choose the **Shelly → Button Pressed** event, then select
+an existing **Shelly Input** configured in button mode. Add a **Toggle** action for
+the Indigo device you want to control. Indigo evaluates the trigger's conditions
+normally. Disable an older input-state-change trigger for the same action to
+avoid toggling twice.
+
+The event fires once for each live physical press, independently of the relay.
+Release and click/long-press classifications do not fire it. Startup/reconnect
+samples and notifications buffered during connection setup update input state
+without firing this event. It uses the existing input device; no additional
+Indigo device is created. This feature has not been published in a release yet.
+
 ## Troubleshooting discovery
 
 Gen2–Gen4 discovery is implemented. Gen1 discovery is still planned.
@@ -181,7 +195,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.8.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.9.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run

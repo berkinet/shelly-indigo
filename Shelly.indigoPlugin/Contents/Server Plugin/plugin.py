@@ -31,6 +31,8 @@ class Plugin(indigo.PluginBase):
         self.catalog = {}
         self.catalog_lock = threading.Lock()
         self.reported_binding_errors = {}
+        self.button_triggers = {}
+        self.trigger_lock = threading.Lock()
 
     def startup(self):
         for module in ("zeroconf", "ifaddr", "websocket"):
@@ -185,11 +187,19 @@ class Plugin(indigo.PluginBase):
             self._update(address, payload)
         elif kind == "event" and address in self.info:
             for event in payload.get("events", []):
+                component = event.get("component") if isinstance(event, dict) else None
+                previous = self.inventory[address].channels.get(component) if isinstance(component, str) else None
+                timestamp = event.get("ts") if isinstance(event, dict) else None
+                duplicate = (previous is not None and previous.button_state is True
+                             and (timestamp is None or previous.event_timestamp == timestamp))
                 channel = self.inventory[address].apply_input_event(event)
                 if channel is not None:
                     # Publish each transition separately, even when a frame contains
                     # both a quick press and release for the same component.
                     self._publish_channels(address, [channel])
+                    if (event.get("event") == "btn_down" and not duplicate
+                            and not payload.get("_initial", False)):
+                        self._fire_button_pressed(address, channel, event)
         elif kind == "offline":
             if address in self.inventory:
                 self.inventory[address].invalidate_buttons()
@@ -277,6 +287,73 @@ class Plugin(indigo.PluginBase):
                 dev.updateStateImageOnServer(image)
             dev.setErrorStateOnServer(None)
         return created
+
+    def _button_input(self, device_id):
+        try:
+            dev = indigo.devices[int(device_id)]
+        except (TypeError, ValueError, KeyError):
+            return None
+        if (dev.deviceTypeId != "shellyInput" or self._expected_device_type(dev.pluginProps) != "shellyInput"
+                or not self._selection_key(dev.pluginProps) or dev.states.get("inputMode") != "button"):
+            return None
+        return dev
+
+    def getButtonInputs(self, filter="", valuesDict=None, typeId="", targetId=0):
+        options = []
+        for dev in self._devices():
+            if self._button_input(dev.id) is not None:
+                suffix = " [disabled]" if not dev.enabled else ""
+                options.append((str(dev.id), f"{dev.name}{suffix}"))
+        label = "Select a Shelly button input" if options else "No configured button inputs found"
+        return [(NO_CHANNEL, label)] + sorted(options, key=lambda item: item[1].casefold())
+
+    def validateEventConfigUi(self, valuesDict, typeId, eventId):
+        if typeId != "buttonPressed" or self._button_input(valuesDict.get("inputDeviceId")) is None:
+            message = "Select an existing Shelly Input configured in button mode."
+            return False, valuesDict, indigo.Dict({"inputDeviceId": message, "showAlertText": message})
+        valuesDict["inputDeviceId"] = str(int(valuesDict["inputDeviceId"]))
+        return True, valuesDict
+
+    def triggerStartProcessing(self, trigger):
+        with self.trigger_lock:
+            self.button_triggers.pop(trigger.id, None)
+            if trigger.pluginTypeId == "buttonPressed":
+                try:
+                    device_id = int(trigger.pluginProps.get("inputDeviceId"))
+                except (TypeError, ValueError):
+                    return
+                self.button_triggers[trigger.id] = device_id
+
+    def triggerStopProcessing(self, trigger):
+        with self.trigger_lock:
+            self.button_triggers.pop(trigger.id, None)
+
+    def _fire_button_pressed(self, address, channel, event):
+        with self.trigger_lock:
+            subscriptions = list(self.button_triggers.items())
+        identity = self.info[address]["id"]
+        for trigger_id, device_id in subscriptions:
+            try:
+                trigger = indigo.triggers[trigger_id]
+            except KeyError:
+                continue
+            if not trigger.enabled or trigger.pluginTypeId != "buttonPressed":
+                continue
+            if str(trigger.pluginProps.get("inputDeviceId")) != str(device_id):
+                continue
+            dev = self._button_input(device_id)
+            if (dev is None or not dev.enabled or dev.pluginProps.get("shellyId") != identity
+                    or dev.pluginProps.get("component") != channel.key):
+                continue
+            data = indigo.Dict({"source": "com.berkinet.indigoplugin.shelly",
+                                "inputDeviceId": device_id, "shellyId": identity,
+                                "component": channel.key, "event": "btn_down"})
+            if isinstance(event.get("ts"), (int, float)):
+                data["ts"] = event["ts"]
+            try:
+                indigo.trigger.execute(trigger_id, ignoreConditions=False, trigger_data=data)
+            except Exception:
+                self.logger.exception("Could not execute Button Pressed trigger %s", trigger_id)
 
     @staticmethod
     def _device_label(info):

@@ -115,10 +115,12 @@ class WebsocketTests(unittest.TestCase):
             kind, _, data = events.get(timeout=5)
             self.assertEqual(kind, 'event', data)
             self.assertEqual(data['events'][0]['event'], 'btn_down')
+            self.assertTrue(data['_initial'])
             worker.command('Input.GetStatus', {'id': 0})
             kind, _, data = events.get(timeout=5)
             self.assertEqual(kind, 'event', data)
             self.assertEqual(data['events'][0]['event'], 'btn_up')
+            self.assertNotIn('_initial', data)
         finally:
             worker.stop()
             worker.join(5)

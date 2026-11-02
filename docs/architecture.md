@@ -42,6 +42,10 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
   for quick transitions in one frame, and older timestamped events are ignored.
   Connection-setup notifications are buffered until identity/inventory is ready;
   a later Modbus sample supersedes earlier buffered button events.
+- Source build 0.1.9 (unreleased) adds a native Button Pressed event bound to an
+  existing Indigo button-input ID. Only accepted live btn_down notifications
+  execute enabled matching triggers, with Indigo conditions honored. Repeated
+  notifications, initial reads and buffered setup events do not execute triggers.
 - Notifications are partial updates. Missing fields preserve known values.
 - Indigo calls and discovery reconciliation happen in the concurrent plugin
   thread; actions and network workers communicate with it through an event queue.

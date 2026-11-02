@@ -64,6 +64,7 @@ class IndigoTests(unittest.TestCase):
     def setUp(self):
         self.devices = Devices()
         module = types.SimpleNamespace(PluginBase=Base, devices=self.devices,
+                 triggers={}, trigger=types.SimpleNamespace(execute=Mock()),
                  device=types.SimpleNamespace(create=self.devices.create),
                  kProtocol=types.SimpleNamespace(Plugin='plugin'), Dict=dict,
                  kStateImageSel=types.SimpleNamespace(SensorOff='neutral', SensorOn='on'))
@@ -476,3 +477,122 @@ class IndigoTests(unittest.TestCase):
         with self.assertLogs('test-plugin', level='WARNING'):
             self.plugin._handle('offline', self.address, 'timeout')
         self.assertEqual(dev.error, 'Offline')
+
+    def _button_trigger(self, identifier=101, device_id=2):
+        self.plugin._handle('status', self.address, {
+            'input:0': {'state': None, '_inputType': 'button', '_enabled': True}})
+        trigger = types.SimpleNamespace(id=identifier, enabled=True, pluginTypeId='buttonPressed',
+                                        pluginProps={'inputDeviceId': str(device_id)})
+        sys.modules['indigo'].triggers[identifier] = trigger
+        self.plugin.triggerStartProcessing(trigger)
+        return trigger
+
+    def _press_event(self, name='btn_down', timestamp=1, component='input:0', initial=False):
+        self.plugin._handle('event', self.address, {'_initial': initial, 'events': [
+            {'component': component, 'event': name, 'ts': timestamp}]})
+
+    def test_button_event_dialog_lists_only_existing_button_inputs(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/Events.xml'
+        definition = ElementTree.parse(xml).find("Event[@id='buttonPressed']")
+        self.assertEqual(definition.findtext('Name'), 'Button Pressed')
+        field = definition.find("ConfigUI/Field[@id='inputDeviceId']")
+        generate = getattr(self.plugin, field.find('List').get('method'))
+        self.assertEqual(generate(), [('_none_', 'No configured button inputs found')])
+        self.assertFalse(self.plugin.validateEventConfigUi({'inputDeviceId': '2'}, 'buttonPressed', 0)[0])
+        self._button_trigger()
+        self.devices[2].name = 'Garden button'
+        self.assertEqual(generate()[1:], [('2', 'Garden button')])
+        self.assertTrue(all(key for key, _ in generate()))
+        self.assertTrue(self.plugin.validateEventConfigUi({'inputDeviceId': '2'}, 'buttonPressed', 0)[0])
+        for invalid in ('_none_', '1', '999', '', None):
+            self.assertFalse(self.plugin.validateEventConfigUi({'inputDeviceId': invalid}, 'buttonPressed', 0)[0])
+
+    def test_button_press_executes_once_per_press_and_honors_conditions(self):
+        self._button_trigger()
+        execute = sys.modules['indigo'].trigger.execute
+        self._press_event()
+        self.assertTrue(self.devices[2].states['onOffState'])
+        self.assertEqual(execute.call_count, 1)
+        execute.assert_called_with(101, ignoreConditions=False, trigger_data={
+            'source': 'com.berkinet.indigoplugin.shelly', 'inputDeviceId': 2,
+            'shellyId': 'shelly-unit', 'component': 'input:0', 'event': 'btn_down', 'ts': 1})
+        self._press_event()  # Retransmitted notification.
+        self._press_event('long_push', 2)
+        self._press_event('btn_up', 3)
+        self._press_event('single_push', 4)
+        self._press_event(timestamp=2)  # Older than the accepted release.
+        self.assertFalse(self.devices[2].states['onOffState'])
+        self.assertEqual(execute.call_count, 1)
+        self._press_event(timestamp=5)
+        self.assertEqual(execute.call_count, 2)
+
+    def test_startup_samples_and_buffered_events_never_fire_button_trigger(self):
+        self._button_trigger()
+        execute = sys.modules['indigo'].trigger.execute
+        status = {'input:0': {'state': None, '_inputType': 'button', '_buttonState': True}}
+        self.plugin._handle('ready', self.address, (self.info, status))
+        self.plugin._handle('status', self.address, status)
+        self._press_event(timestamp=1, initial=True)
+        self.assertTrue(self.devices[2].states['onOffState'])
+        execute.assert_not_called()
+        self._press_event('btn_up', 2)
+        self._press_event(timestamp=3)
+        execute.assert_called_once()
+        execute.reset_mock()
+        self.plugin._handle('status', self.address, status)
+        self._press_event(timestamp=4)  # A live edge still counts if a sample read ON first.
+        execute.assert_called_once()
+
+    def test_quick_press_release_pair_fires_one_button_event(self):
+        self._button_trigger()
+        self.plugin._handle('event', self.address, {'events': [
+            {'component': 'input:0', 'event': 'btn_down', 'ts': 1},
+            {'component': 'input:0', 'event': 'btn_up', 'ts': 2}]})
+        sys.modules['indigo'].trigger.execute.assert_called_once()
+        self.assertFalse(self.devices[2].states['onOffState'])
+
+    def test_button_event_registration_and_source_filtering(self):
+        trigger = self._button_trigger()
+        execute = sys.modules['indigo'].trigger.execute
+        self.plugin.triggerStartProcessing(trigger)  # Idempotent registration.
+        self._press_event(component='input:1')
+        self.plugin._handle('ready', '192.0.2.2:80', ({**self.info, 'id': 'other-unit'}, self.status))
+        self.plugin._handle('event', '192.0.2.2:80', {'events': [
+            {'component': 'input:0', 'event': 'btn_down', 'ts': 1}]})
+        execute.assert_not_called()
+        self._press_event()
+        execute.assert_called_once()
+        self.plugin.triggerStopProcessing(trigger)
+        self.plugin.triggerStopProcessing(trigger)
+        self._press_event(timestamp=2)
+        execute.assert_called_once()
+
+    def test_deleted_disabled_or_changed_trigger_and_input_do_not_fire(self):
+        trigger = self._button_trigger()
+        execute = sys.modules['indigo'].trigger.execute
+        trigger.enabled = False
+        self._press_event(timestamp=1)
+        trigger.enabled = True
+        self.devices[2].enabled = False
+        self._press_event(timestamp=2)
+        self.devices[2].enabled = True
+        trigger.pluginProps['inputDeviceId'] = '1'
+        self._press_event(timestamp=3)
+        trigger.pluginProps['inputDeviceId'] = '2'
+        del sys.modules['indigo'].triggers[101]
+        self._press_event(timestamp=4)
+        sys.modules['indigo'].triggers[101] = trigger
+        del self.devices[2]
+        self._press_event(timestamp=5)
+        execute.assert_not_called()
+
+    def test_failing_button_trigger_does_not_block_other_triggers(self):
+        self._button_trigger(101)
+        self._button_trigger(102)
+        execute = sys.modules['indigo'].trigger.execute
+        execute.side_effect = [RuntimeError('Indigo action failure'), None]
+        with self.assertLogs('test-plugin', level='ERROR'):
+            self._press_event()
+        self.assertEqual([call.args[0] for call in execute.call_args_list], [101, 102])

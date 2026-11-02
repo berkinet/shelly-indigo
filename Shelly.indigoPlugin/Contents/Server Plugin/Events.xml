@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<Events>
+  <Event id="buttonPressed">
+    <Name>Button Pressed</Name>
+    <ConfigUI>
+      <Field id="inputDeviceId" type="menu" defaultValue="_none_">
+        <Label>Shelly input:</Label>
+        <List class="self" method="getButtonInputs" />
+      </Field>
+      <Field id="pressHelp" type="label">
+        <Label>Choose an existing Shelly Input in button mode. Fires once on a live press; release, holding and startup state reads do not fire this event.</Label>
+      </Field>
+    </ConfigUI>
+  </Event>
+</Events>

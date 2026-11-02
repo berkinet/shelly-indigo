@@ -124,6 +124,8 @@ class Worker(threading.Thread):
                                   if event.get("component") not in sampled]}
                         if not params["events"]:
                             continue
+                    if kind == "event":
+                        params = {**params, "_initial": True}
                     self.emit(kind, self.address, params)
                 self.pending_notifications.clear()
                 delay = 1
