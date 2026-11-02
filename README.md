@@ -3,6 +3,11 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
+**Installable download:** [Shelly 0.1.1 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.1-alpha.1/Shelly-0.1.1.indigoPlugin.zip).
+The release asset includes the libraries required for discovery and communication.
+The repository's `Shelly.indigoPlugin` source directory requires the build step
+below before installation; GitHub's automatic source archives also require it.
+
 **Status: initial alpha, not yet validated against real Shelly hardware or loaded
 into Indigo.** Gen1–Gen4 support is the project goal, not a claim of complete
 support in this release. This is a new project, not a fork of kw123/SHELLY.
@@ -41,6 +46,24 @@ with discovery enabled creates Indigo devices automatically. It does not change
 Shelly settings or operate outputs until you issue an Indigo action. This alpha
 supports one shared password, not different credentials for each physical unit.
 Indigo stores the password in plugin preferences; the UI masks it.
+
+## Troubleshooting discovery
+
+Gen2–Gen4 discovery is implemented. Gen1 discovery is still planned.
+
+If Indigo logs `Bonjour discovery unavailable (ModuleNotFoundError)`, check the
+installed `Shelly.indigoPlugin/Contents/Packages` directory. It must contain
+`zeroconf`, `ifaddr` and `websocket`, along with their distribution metadata.
+An installed copy lacking this directory cannot discover or communicate with
+devices. Install the complete plugin package linked above, or build the source
+and install the resulting bundle from `build/Shelly.indigoPlugin`.
+
+After installation and restart, look for `Shelly discovery started` in the Indigo
+Event Log. That confirms the browser started; successful device connections and
+`Created ...` messages confirm that supported channels were found. If discovery
+starts but finds nothing, verify the devices are Gen2–Gen4 and that IPv4 Bonjour
+multicast can reach the Indigo server. Additional hosts can be entered in plugin
+preferences when multicast does not cross subnets.
 
 ## Development
 
