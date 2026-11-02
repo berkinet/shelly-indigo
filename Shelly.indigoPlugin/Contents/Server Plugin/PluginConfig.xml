@@ -1,0 +1,18 @@
+<?xml version="1.0"?>
+<PluginConfig>
+    <Field id="discovery" type="checkbox" defaultValue="true">
+        <Label>Discovery:</Label>
+        <Description>Automatically discover Gen2–Gen4 devices and create supported channels</Description>
+    </Field>
+    <Field id="hosts" type="textfield" defaultValue="">
+        <Label>Additional hosts:</Label>
+        <Description>Optional comma-separated IP addresses or hostnames for devices on other subnets.</Description>
+    </Field>
+    <Field id="password" type="textfield" secure="true" defaultValue="">
+        <Label>Shelly password:</Label>
+        <Description>Shared admin password for protected devices. Leave blank if authentication is disabled.</Description>
+    </Field>
+    <Field id="notice" type="label">
+        <Label>Alpha: switches, binary inputs and switch metering. Restart the plugin after changing preferences.</Label>
+    </Field>
+</PluginConfig>
