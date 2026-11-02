@@ -45,7 +45,9 @@ startup/Bonjour admission, late timeouts, changed addresses, deletion, real work
 stop/re-enable, and public-only recognition of a disabled identity. Credential tests
 cover all three XML dialogs, Save/Cancel, keep/clear, shared credentials and offline
 configuration. Existing Gen2/Gen3/Gen4, protocol, trigger, state and packaging checks
-remain in the suite.
+remain in the suite. Hosted macOS checks use the supported standard Intel runner
+pool after the ARM runner remained capacity-queued; the complete Ubuntu/macOS
+workflow is still required before publication.
 
 Native dialog rendering and the installed-plugin checkbox/password flows still
 need owner verification. The live Indigo connector was rate-limited during this
