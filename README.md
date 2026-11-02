@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.5 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.5-alpha.1/Shelly-0.1.5.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.6 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.6-alpha.1/Shelly-0.1.6.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -17,9 +17,11 @@ See [hardware validation](docs/hardware-validation.md) for the current evidence.
 ## Initial alpha features
 
 - Automatic IPv4 Bonjour discovery of Gen2–Gen4 RPC devices.
-- Automatic creation of separate Indigo devices for switches and binary inputs.
-- Discovered-channel dropdowns in Indigo device dialogs, with optional manual
-  creation, automatic detail population and duplicate validation.
+- A plugin menu command to create selected Indigo switch/input devices on demand.
+- Discovered-channel dropdowns in Indigo device dialogs, with automatic detail
+  population and duplicate validation. Discovery never creates devices implicitly.
+- Local Shelly-assigned names prefix internal IDs in selectors and newly created
+  Indigo names when available.
 - Indigo on/off/toggle control; WebSocket state notifications.
 - Momentary button input tracking: ON while held, OFF when released, independent
   of the relay output.
@@ -44,12 +46,17 @@ can be specified when multicast does not cross subnets.
 3. In the plugin preferences, enable discovery and enter the shared Shelly admin
    password if required. Optional additional hosts are comma-separated hostnames
    or IP addresses, with optional ports.
-4. Restart the plugin after changing preferences. Supported channels appear
-   automatically once a device connects successfully.
+4. Restart the plugin after changing preferences. Discovery runs continuously
+   and fills selectors as devices connect; it does not create Indigo devices.
+5. Choose **Shelly → Create Indigo Devices…** from the plugin menu, select one
+   Shelly or all discovered Shellys, choose switches and/or inputs, then click
+   **Create Devices**. Inputs are unchecked initially.
 
 Test on a development Indigo installation first. Installing/enabling the plugin
-with discovery enabled creates Indigo devices automatically. It does not change
-Shelly settings or operate outputs until you issue an Indigo action. This alpha
+starts discovery and updates existing Indigo devices. Creating additional Indigo
+devices requires the menu command above or individually saving a New Device
+dialog. It does not change Shelly settings or operate outputs until you issue
+an Indigo action. This alpha
 supports one shared password, not different credentials for each physical unit.
 Indigo stores the password in plugin preferences; the UI masks it.
 
@@ -61,17 +68,35 @@ the dropdown lists matching discovered channels. Selecting one fills its device
 ID, channel, host, model and generation. Click **Refresh discovered channels**
 if discovery completed after opening the dialog.
 
-Automatic Indigo device creation stays enabled by default. Channels already
-configured show their Indigo device names in the dropdown; edit those existing
-devices instead of creating duplicates. Existing devices have their channel
-preselected, including while offline or before discovery completes after restart.
+Discovery is always separate from creation. **Create Indigo Devices…** performs a
+one-time creation of missing channels for the chosen Shelly devices and channel
+types. Rerun it whenever you want to add more channels. Previously stored
+`autoCreate` preferences are ignored from v0.1.6; restarts, new discoveries and
+button events cannot create additional devices implicitly. Existing Indigo
+devices continue receiving updates, and their names and IDs are preserved.
 
-For manual creation, uncheck **Create Indigo devices** in plugin preferences and
-restart the plugin. Discovery remains enabled and fills the dropdown, but new
-channels are created only when you select and save them. Existing Indigo devices
-remain configured and continue receiving updates. The selector currently offers
-switches, binary inputs and button inputs; dimmers and other unsupported
-components are omitted.
+You can also create an individual device using the New Device dropdown.
+Channels already configured show their Indigo device names; edit those devices
+to avoid duplicates. Existing devices have their channel preselected, including
+while offline or before discovery completes after restart. The selector offers
+switches, binary inputs and button inputs; unsupported components are omitted.
+
+### Names assigned in Shelly
+
+The plugin reads the device's local configured name from
+`Sys.GetConfig → device.name`, the name stored on the device and exposed through
+its web interface. When populated, new Indigo names use the format
+`Garden Gate (shelly…ID) input:0`. If unset, the internal ID is used. Selectors
+refresh local names during normal status reconciliation; changing a Shelly name
+does not rename existing Indigo devices.
+
+A name assigned in the Shelly app is usable here when it is also stored as the
+device's local name. Labels kept only in the cloud account are not exposed by
+this local name field. This plugin does not connect to the Shelly cloud account
+or retrieve app-only cloud labels. Read-only checks of two devices on the owner's
+network returned null local names; no names or device settings were changed.
+
+See [Shelly's system configuration API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys/).
 
 ### Device type and channel must match
 
@@ -138,7 +163,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.5.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.6.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run

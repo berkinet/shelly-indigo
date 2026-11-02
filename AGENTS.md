@@ -15,3 +15,10 @@
   transitions and substantial design changes, with advance notice to the owner.
 - Per-device credentials are the intended design; the alpha's shared password
   preference is temporary.
+
+- Discovery must run continuously without creating Indigo devices implicitly.
+  Create devices only through the explicit plugin menu command or an individual
+  New Device save. Ignore older automatic-creation preferences.
+- Prefer names assigned locally on the Shelly device as prefixes for internal
+  IDs in new Indigo names and selectors. Preserve existing Indigo names. Do not
+  assume app-only cloud labels are available through the local device API.

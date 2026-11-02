@@ -2,11 +2,7 @@
 <PluginConfig>
   <Field id="discovery" type="checkbox" defaultValue="true">
     <Label>Discovery:</Label>
-    <Description>Automatically discover Gen2–Gen4 Shelly devices</Description>
-  </Field>
-  <Field id="autoCreate" type="checkbox" defaultValue="true">
-    <Label>Create Indigo devices:</Label>
-    <Description>Automatically create supported channels. Uncheck to select channels manually in New Device.</Description>
+    <Description>Continuously discover Gen2–Gen4 Shelly devices. Create Indigo devices from the Shelly plugin menu.</Description>
   </Field>
   <Field id="hosts" type="textfield" defaultValue="">
     <Label>Additional hosts:</Label>

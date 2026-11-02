@@ -107,6 +107,33 @@ class Plugin(indigo.PluginBase):
     def _handle(self, kind, address, payload):
         if kind == "discover":
             self._connect(address, payload)
+        elif kind == "create_devices":
+            created = 0
+            kinds = set()
+            if payload.get("includeSwitches"):
+                kinds.add("switch")
+            if payload.get("includeInputs"):
+                kinds.add("input")
+            target = payload.get("shellyId", "")
+            for host, inventory in list(self.inventory.items()):
+                info = self.info.get(host)
+                if info is None:
+                    continue
+                if target and info["id"] != target:
+                    continue
+                with self.catalog_lock:
+                    online = {key for key, entry in self.catalog.items() if entry["online"]}
+                channels = [channel for channel in inventory.channels.values()
+                            if channel.kind in kinds and f"{info['id']}/{channel.key}" in online]
+                created += self._publish_channels(host, channels, create=True)
+            self.logger.info("Create Indigo devices completed: %s new devices; existing bindings preserved", created)
+        elif kind == "identity" and address in self.info:
+            self.info[address] = dict(payload)
+            with self.catalog_lock:
+                for key, entry in list(self.catalog.items()):
+                    if entry["host"] == address:
+                        self.catalog[key] = {**entry, "shellyName": payload.get("name") or "",
+                                             "label": self._channel_label(payload, entry["component"], address)}
         elif kind == "command":
             dev_id, action = payload
             dev = indigo.devices[dev_id]
@@ -172,7 +199,8 @@ class Plugin(indigo.PluginBase):
     def _update(self, address, status):
         self._publish_channels(address, self.inventory[address].merge(status))
 
-    def _publish_channels(self, address, channels):
+    def _publish_channels(self, address, channels, create=False):
+        created = 0
         info = self.info[address]
         devices = {}
         for dev in self._devices():
@@ -190,20 +218,22 @@ class Plugin(indigo.PluginBase):
                 if supported:
                     self.catalog[selection] = {
                         **props, "online": True,
-                        "label": f"{info.get('name') or info['id']} / {channel.key} ({address})"}
+                        "shellyName": info.get("name") or "",
+                        "label": self._channel_label(info, channel.key, address)}
                 else:
                     self.catalog.pop(selection, None)
             dev = devices.get(key)
             if dev is None:
-                if not supported or not self.pluginPrefs.get("autoCreate", True):
+                if not supported or not create:
                     continue
                 dev = indigo.device.create(
                     protocol=indigo.kProtocol.Plugin,
                     address=f"{info['id']}/{channel.key}",
-                    name=f"{info.get('name') or info['id']} {channel.key}",
+                    name=f"{self._device_label(info)} {channel.key}",
                     deviceTypeId="shellySwitch" if channel.kind == "switch" else "shellyInput",
                     props=props)
                 devices[key] = dev
+                created += 1
                 self.logger.info("Created %s", dev.name)
             if not dev.enabled or self._block_invalid_binding(dev):
                 continue
@@ -225,6 +255,35 @@ class Plugin(indigo.PluginBase):
             dev.updateStatesOnServer([{"key": k, "value": v} for k, v in states.items()])
             unknown = channel.kind == "input" and not states.get("stateKnown", False)
             dev.setErrorStateOnServer("Waiting for input press/release" if unknown else None)
+        return created
+
+    @staticmethod
+    def _device_label(info):
+        name = info.get("name")
+        name = " ".join(name.split()) if isinstance(name, str) else ""
+        return f"{name} ({info['id']})" if name and name != info["id"] else info["id"]
+
+    @classmethod
+    def _channel_label(cls, info, component, address):
+        return f"{cls._device_label(info)} / {component} ({address})"
+
+    def getDiscoveredShellyDevices(self, filter="", valuesDict=None, typeId="", targetId=0):
+        with self.catalog_lock:
+            devices = {entry["shellyId"]: self._device_label(
+                {"id": entry["shellyId"], "name": entry.get("shellyName")})
+                for entry in self.catalog.values() if entry["online"]}
+        return [("", "All discovered Shelly devices")] + sorted(devices.items(), key=lambda item: item[1].casefold())
+
+    def createDiscoveredDevices(self, valuesDict=None, typeId=""):
+        values = valuesDict or {}
+        switches = values.get("includeSwitches", True)
+        inputs = values.get("includeInputs", False)
+        if not switches and not inputs:
+            self.logger.warning("Select switches and/or inputs before creating Indigo devices")
+            return False
+        self._emit("create_devices", "", {"includeSwitches": bool(switches),
+                   "includeInputs": bool(inputs), "shellyId": values.get("shellyId", "")})
+        return True
 
     @staticmethod
     def _expected_device_type(props):

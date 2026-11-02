@@ -1,0 +1,25 @@
+<?xml version="1.0"?>
+<MenuItems>
+  <MenuItem id="createDiscoveredDevices">
+    <Name>Create Indigo Devices…</Name>
+    <CallbackMethod>createDiscoveredDevices</CallbackMethod>
+    <ButtonTitle>Create Devices</ButtonTitle>
+    <ConfigUI>
+      <Field id="shellyId" type="menu" defaultValue="">
+        <Label>Shelly device:</Label>
+        <List class="self" method="getDiscoveredShellyDevices" />
+      </Field>
+      <Field id="includeSwitches" type="checkbox" defaultValue="true">
+        <Label>Switches:</Label>
+        <Description>Create missing relay/switch devices</Description>
+      </Field>
+      <Field id="includeInputs" type="checkbox" defaultValue="false">
+        <Label>Inputs:</Label>
+        <Description>Create missing binary/button input devices</Description>
+      </Field>
+      <Field id="creationHelp" type="label">
+        <Label>Creates only the selected channel types for currently connected discovered devices. Existing devices and names are preserved. Discovery continues without creating devices automatically.</Label>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
+</MenuItems>

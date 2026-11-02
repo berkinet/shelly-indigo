@@ -6,7 +6,7 @@ protocol; locally installed Indigo plugins provide examples of the host API.
 
 ## Target
 
-Native Indigo integration with automatic discovery, channel creation and local
+Native Indigo integration with automatic discovery, explicit channel creation and local
 bidirectional communication, without Home Assistant or a cloud dependency.
 Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately.
 
@@ -20,8 +20,14 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
 - A locked snapshot of supported discovered channels feeds Indigo's device-dialog
   dropdowns. Saved devices keep their selections while offline. Validation fills
   connection details and rejects duplicate or mismatched channel bindings.
-- Automatic channel creation remains the default; an optional manual mode keeps
-  discovery active and creates Indigo devices only when selected and saved.
+- From v0.1.6, discovery never creates Indigo devices implicitly. Creation is an
+  explicit one-time plugin menu command, scoped by physical unit and channel
+  type, or an individual New Device save. Legacy autoCreate preferences have no
+  effect. Existing mapped devices keep receiving updates.
+- Device-local names are read through Sys.GetConfig.device.name at connection
+  and during reconciliation. They prefix internal IDs in selectors and new
+  Indigo device names. Existing Indigo names are not overwritten. App-only cloud
+  labels are outside the local API integration.
 - Switches, binary inputs and button inputs become separate Indigo relay/sensor
   devices. Switch metering is exposed where present. Unsupported components are
   ignored. Button channels are identified with read-only Input.GetConfig calls
@@ -69,3 +75,6 @@ of building or publishing it. Record hardware testing status honestly.
 - https://docs.indigodomo.com/2025.2/plugin-dev/reference/xml/configui/dynamic-lists/
 - https://docs.indigodomo.com/2025.2/plugin-dev/reference/xml/configui/button/
 - https://docs.indigodomo.com/2025.2/plugin-dev/reference/plugin-py/device-methods/
+
+- https://docs.indigodomo.com/2025.2/plugin-dev/reference/xml/menuitems/
+- https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Sys/

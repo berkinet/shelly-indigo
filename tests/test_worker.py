@@ -63,3 +63,31 @@ class WorkerTests(unittest.TestCase):
                 worker.join(3)
         session.call.assert_called_once_with('Shelly.GetDeviceInfo')
         self.assertFalse(worker.online)
+
+    def test_local_shelly_name_is_read_and_refreshed_without_cloud_or_writes(self):
+        emitted = []
+        worker = Worker('192.0.2.1:80', lambda *args: emitted.append(args))
+        worker.device_info = {'id': 'unit', 'gen': 4}
+        worker.online = True
+        session = Mock()
+        session.call.side_effect = [{'device': {'name': '  Garden Gate\nButton  '}},
+                                    {'switch:0': {'output': False}}]
+        worker._read_status(session)
+        self.assertEqual(worker.device_info['name'], 'Garden Gate Button')
+        self.assertEqual(emitted[0][0], 'identity')
+        self.assertEqual(emitted[0][2]['name'], 'Garden Gate Button')
+        self.assertEqual([call.args[0] for call in session.call.call_args_list], ['Sys.GetConfig', 'Shelly.GetStatus'])
+        session.call.side_effect = [{'device': {'name': None}}, {'switch:0': {'output': False}}]
+        worker._read_status(session)
+        self.assertIsNone(worker.device_info['name'])
+        # Previously published info is a snapshot, not mutated by a later refresh.
+        self.assertEqual(emitted[0][2]['name'], 'Garden Gate Button')
+
+    def test_unavailable_local_name_does_not_disable_device_status(self):
+        from shelly.rpc import RpcError
+        worker = Worker('192.0.2.1:80', lambda *args: None)
+        worker.device_info = {'id': 'unit', 'gen': 3}
+        session = Mock()
+        session.call.side_effect = [RpcError('unsupported'), {'switch:0': {'output': True}}]
+        self.assertTrue(worker._read_status(session)['switch:0']['output'])
+        self.assertNotIn('name', worker.device_info)

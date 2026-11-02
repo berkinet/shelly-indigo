@@ -17,6 +17,7 @@ class Worker(threading.Thread):
         self.online = False
         self.command_lock = threading.Lock()
         self.pending_notifications = []
+        self.device_info = None
 
     def command(self, method, params):
         with self.command_lock:
@@ -41,6 +42,22 @@ class Worker(threading.Thread):
             self.emit(kind, self.address, params)
 
     def _read_status(self, session):
+        if self.device_info is not None:
+            try:
+                config = session.call("Sys.GetConfig")
+            except AuthenticationError:
+                raise
+            except RpcError:
+                # Missing friendly names must not prevent state/control support.
+                pass
+            else:
+                device = config.get("device")
+                name = device.get("name") if isinstance(device, dict) else None
+                name = (" ".join(name.split()) or None) if isinstance(name, str) else None
+                if name != self.device_info.get("name"):
+                    self.device_info = {**self.device_info, "name": name}
+                    if self.online:
+                        self.emit("identity", self.address, dict(self.device_info))
         status = session.call("Shelly.GetStatus")
         for key, values in status.items():
             if (not re.fullmatch(r"input:\d+", key) or not isinstance(values, dict)
@@ -69,7 +86,9 @@ class Worker(threading.Thread):
                 if self.expected_id and identity != self.expected_id:
                     raise RpcError("Shelly identity changed at this address; rediscovery required")
                 self.expected_id = identity
+                self.device_info = dict(info)
                 status = self._read_status(session)
+                info = dict(self.device_info)
                 with self.command_lock:
                     self.online = True
                 self.emit("ready", self.address, (info, status))

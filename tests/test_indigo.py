@@ -70,13 +70,15 @@ class IndigoTests(unittest.TestCase):
         self.status = {'switch:0': {'output': True, 'apower': 10},
                        'input:0': {'state': False}, 'input:1': {'state': None}}
         self.plugin._handle('ready', self.address, (self.info, self.status))
+        self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
     def tearDown(self):
         self.patcher.stop()
         sys.modules.pop('plugin', None)
 
-    def test_create_only_supported_channels_and_avoid_duplicates(self):
+    def test_explicit_creation_only_adds_supported_channels_and_avoids_duplicates(self):
         self.assertEqual(len(self.devices), 2)
         self.plugin._handle('ready', self.address, (self.info, self.status))
+        self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
         self.assertEqual(len(self.devices), 2)
         self.assertTrue(self.devices[1].states['onOffState'])
         self.assertEqual(self.devices[1].states['powerWatts'], 10)
@@ -172,9 +174,9 @@ class IndigoTests(unittest.TestCase):
                 refreshed = getattr(self.plugin, button.findtext('CallbackMethod'))(values, type_id, 0)
                 self.assertEqual(refreshed['selectedChannel'], options[1][0])
 
-    def test_manual_creation_mode_discovers_without_creating_until_selected(self):
+    def test_individual_manual_creation_discovers_without_creating_until_selected(self):
         self.devices.clear()
-        self.plugin = sys.modules['plugin'].Plugin('id', 'name', 'version', {'autoCreate': False})
+        self.plugin = sys.modules['plugin'].Plugin('id', 'name', 'version', {})
         self.plugin._handle('ready', self.address, (self.info, self.status))
         self.assertEqual(len(self.devices), 0)
         options = self.plugin.getShellyChannels(typeId='shellySwitch')
@@ -331,3 +333,63 @@ class IndigoTests(unittest.TestCase):
         self.assertEqual(dev.states['powerWatts'], 12.5)
         self.assertEqual(dev.states['energyWh'], 90)
         self.assertIsNone(dev.error)
+
+    def test_discovery_and_events_never_create_even_with_legacy_auto_preference(self):
+        self.devices.clear()
+        self.plugin = sys.modules['plugin'].Plugin('id', 'name', 'version', {'autoCreate': True})
+        self.plugin._handle('ready', self.address, (self.info, self.status))
+        self.plugin._handle('ready', self.address, (self.info, self.status))
+        self.plugin._handle('status', self.address, {'switch:1': {'output': False}})
+        self.plugin._handle('event', self.address, {'events': [
+            {'component': 'input:1', 'event': 'btn_down', 'ts': 1}]})
+        self.assertEqual(len(self.devices), 0)
+        self.assertIn('shelly-unit/switch:1', dict(self.plugin.getShellyChannels(typeId='shellySwitch')))
+        self.assertIn('shelly-unit/input:1', dict(self.plugin.getShellyChannels(typeId='shellyInput')))
+
+    def test_menu_xml_creates_selected_types_with_local_names_and_preserves_renames(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/MenuItems.xml'
+        item = ElementTree.parse(xml).find('MenuItem')
+        ui = item.find('ConfigUI')
+        self.assertEqual(ui.find("Field[@id='includeInputs']").get('defaultValue'), 'false')
+        callback = getattr(self.plugin, item.findtext('CallbackMethod'))
+        menu = getattr(self.plugin, ui.find("Field[@id='shellyId']/List").get('method'))
+        self.devices.clear()
+        info = {**self.info, 'name': 'Garden Gate'}
+        self.plugin._handle('ready', self.address, (info, self.status))
+        self.assertEqual(len(self.devices), 0)
+        self.assertIn('Garden Gate', dict(menu())['shelly-unit'])
+        self.assertTrue(callback({'includeSwitches': True, 'includeInputs': False, 'shellyId': ''}, 'createDiscoveredDevices'))
+        self.plugin._handle(*self.plugin.events.get_nowait())
+        self.assertEqual(len(self.devices), 1)
+        dev = self.devices[1]
+        self.assertEqual(dev.name, 'Garden Gate (shelly-unit) switch:0')
+        dev.name = 'My Indigo gate relay'
+        self.plugin._handle('identity', self.address, {**info, 'name': 'Renamed in Shelly'})
+        self.assertIn('Renamed in Shelly', dict(menu())['shelly-unit'])
+        self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
+        self.assertEqual(len(self.devices), 2)
+        self.assertEqual(dev.name, 'My Indigo gate relay')
+        self.assertEqual(self.devices[2].name, 'Renamed in Shelly (shelly-unit) input:0')
+        self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
+        self.assertEqual(len(self.devices), 2)
+
+    def test_menu_scope_and_offline_skip_do_not_enable_future_creation(self):
+        self.devices.clear()
+        second = {**self.info, 'id': 'second-unit'}
+        address = '192.0.2.2:80'
+        self.plugin._handle('ready', address, (second, self.status))
+        self.plugin._handle('create_devices', '', {'includeSwitches': False, 'includeInputs': True, 'shellyId': 'second-unit'})
+        self.assertEqual(len(self.devices), 1)
+        self.assertEqual(self.devices[1].pluginProps['shellyId'], 'second-unit')
+        self.assertEqual(self.devices[1].pluginProps['component'], 'input:0')
+        self.plugin._handle('status', address, {'switch:2': {'output': True}})
+        self.assertEqual(len(self.devices), 1)
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('offline', self.address, 'offline')
+        self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True, 'shellyId': 'shelly-unit'})
+        self.assertEqual(len(self.devices), 1)
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.assertFalse(self.plugin.createDiscoveredDevices({'includeSwitches': False, 'includeInputs': False}))
+        self.assertTrue(self.plugin.events.empty())
