@@ -12,6 +12,7 @@ jobs:
           python-version: '3.13'
       - run: python -m pip install -r requirements.txt
       - run: python -m unittest discover -s tests -v
+      - run: python tools/check_bundle.py --source
       - run: python tools/build.py
       - run: python tools/check_bundle.py
       - uses: actions/upload-artifact@v4

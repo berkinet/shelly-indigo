@@ -122,3 +122,15 @@ class IndigoTests(unittest.TestCase):
         self.assertNotIn('__file__', namespace)
         self.assertEqual(plugin.pluginPrefs, {})
         self.assertEqual(plugin.workers, {})
+
+    def test_startup_reports_the_missing_dependency_and_stops(self):
+        plugin_module = sys.modules['plugin']
+        with patch.object(plugin_module.importlib, 'import_module',
+                          side_effect=ModuleNotFoundError("No module named 'zeroconf'", name='zeroconf')):
+            with self.assertLogs('test-plugin', level='ERROR') as logs:
+                with self.assertRaisesRegex(RuntimeError, "Missing Shelly dependency 'zeroconf'"):
+                    self.plugin.startup()
+        self.assertIn('Contents/Packages', logs.output[0])
+
+    def test_startup_loads_all_required_libraries(self):
+        self.plugin.startup()

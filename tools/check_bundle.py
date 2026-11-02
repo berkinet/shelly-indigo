@@ -1,5 +1,6 @@
-"""Verify release metadata, portable dependencies, XML and importability in isolation."""
+"""Validate installed source and release archives with an isolated Indigo-style loader."""
 from pathlib import Path
+import argparse
 import ast
 import plistlib
 import subprocess
@@ -9,11 +10,9 @@ import zipfile
 from xml.etree import ElementTree
 
 ROOT = Path(__file__).resolve().parents[1]
-version = plistlib.loads((ROOT / 'Shelly.indigoPlugin/Contents/Info.plist').read_bytes())['PluginVersion']
-archive = ROOT / 'dist' / f'Shelly-{version}.indigoPlugin.zip'
-with zipfile.ZipFile(archive) as package, tempfile.TemporaryDirectory() as temporary:
-    package.extractall(temporary)
-    bundle = Path(temporary) / 'Shelly.indigoPlugin/Contents'
+
+
+def validate(bundle):
     info = plistlib.loads((bundle / 'Info.plist').read_bytes())
     assert info['ServerApiVersion'] == '3.9'
     for xml in (bundle / 'Server Plugin').glob('*.xml'):
@@ -22,30 +21,56 @@ with zipfile.ZipFile(archive) as package, tempfile.TemporaryDirectory() as tempo
         ast.parse(source.read_text())
     packages = bundle / 'Packages'
     assert not list(packages.rglob('*.so')), 'Native extension found'
-    assert not list(package_name for package_name in package.namelist() if '__pycache__' in package_name)
     for distribution in ('websocket_client', 'zeroconf', 'ifaddr'):
         metadata, = packages.glob(f'{distribution}-*.dist-info')
         assert any(p.name.upper().startswith(('LICENSE', 'COPYING'))
                    for p in metadata.rglob('*')), f'Missing license: {distribution}'
-    # Do not pre-add Packages: the entry point must find its own dependencies.
-    # Indigo executes plugin.py rather than importing it as a normal module.
+    # No preloaded Packages, no site-packages, no entry-point __file__, and an
+    # unrelated working directory: both installed source and archives must work.
     script = """
 from pathlib import Path
+import logging
 import sys
 import types
 server_plugin, packages = (Path(value).resolve() for value in sys.argv[1:])
 sys.path.insert(0, str(server_plugin))
-sys.modules['indigo'] = types.SimpleNamespace(PluginBase=object)
+class Base:
+    def __init__(self, unused_id, unused_name, unused_version, prefs):
+        self.pluginPrefs = prefs
+        self.logger = logging.getLogger('bundle-test')
+sys.modules['indigo'] = types.SimpleNamespace(PluginBase=Base)
 namespace = {'__name__': 'indigo_plugin_exec'}
 source = (server_plugin / 'plugin.py').read_text()
 exec(compile(source, 'plugin.py', 'exec'), namespace)
 assert '__file__' not in namespace
-assert isinstance(namespace['Plugin'], type)
+plugin = namespace['Plugin']('test-id', 'test-name', 'test-version', {})
+plugin.startup()
 import websocket, zeroconf, ifaddr
 for module in (websocket, zeroconf, ifaddr):
     assert Path(module.__file__).resolve().is_relative_to(packages), module.__file__
-print('Indigo entry-point execution and bundled dependency imports passed')
+print('Indigo-style startup and bundled dependency imports passed')
 """
-    subprocess.run([sys.executable, '-I', '-S', '-c', script,
-                    str(bundle / 'Server Plugin'), str(packages)], check=True)
-print(f'Validated {archive.name}')
+    with tempfile.TemporaryDirectory() as unrelated:
+        subprocess.run([sys.executable, '-I', '-S', '-B', '-c', script,
+                        str(bundle / 'Server Plugin'), str(packages)], cwd=unrelated, check=True)
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--source', action='store_true', help='Validate the checked-in installable bundle')
+    args = parser.parse_args()
+    if args.source:
+        validate(ROOT / 'Shelly.indigoPlugin/Contents')
+        print('Validated repository plugin bundle')
+        return
+    version = plistlib.loads((ROOT / 'Shelly.indigoPlugin/Contents/Info.plist').read_bytes())['PluginVersion']
+    archive = ROOT / 'dist' / f'Shelly-{version}.indigoPlugin.zip'
+    with zipfile.ZipFile(archive) as package, tempfile.TemporaryDirectory() as temporary:
+        assert not any('__pycache__' in name for name in package.namelist())
+        package.extractall(temporary)
+        validate(Path(temporary) / 'Shelly.indigoPlugin/Contents')
+    print(f'Validated {archive.name}')
+
+
+if __name__ == '__main__':
+    main()

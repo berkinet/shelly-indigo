@@ -3,14 +3,15 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.1 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.1-alpha.1/Shelly-0.1.1.indigoPlugin.zip).
-The release asset includes the libraries required for discovery and communication.
-The repository's `Shelly.indigoPlugin` source directory requires the build step
-below before installation; GitHub's automatic source archives also require it.
+**Installable download:** [Shelly 0.1.2 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.2-alpha.1/Shelly-0.1.2.indigoPlugin.zip).
+The release asset and the repository's `Shelly.indigoPlugin` directory both
+include the libraries required for discovery and communication. You can install
+either bundle directly through Indigo.
 
-**Status: initial alpha, not yet validated against real Shelly hardware or loaded
-into Indigo.** Gen1–Gen4 support is the project goal, not a claim of complete
-support in this release. This is a new project, not a fork of kw123/SHELLY.
+**Status: development alpha.** A read-only network probe has confirmed Bonjour
+discovery of 11 Shelly endpoints on the development network. Full Indigo device
+creation and physical output control are still awaiting validation. Gen1–Gen4
+support is the project goal, not a claim of complete support in this release. This is a new project, not a fork of kw123/SHELLY.
 
 ## Initial alpha features
 
@@ -55,8 +56,9 @@ If Indigo logs `Bonjour discovery unavailable (ModuleNotFoundError)`, check the
 installed `Shelly.indigoPlugin/Contents/Packages` directory. It must contain
 `zeroconf`, `ifaddr` and `websocket`, along with their distribution metadata.
 An installed copy lacking this directory cannot discover or communicate with
-devices. Install the complete plugin package linked above, or build the source
-and install the resulting bundle from `build/Shelly.indigoPlugin`.
+devices. From v0.1.2, dependencies are included in the checked-in bundle as well
+as the release asset. Install the complete current bundle to replace an older
+incomplete installation. Startup now reports the missing library explicitly.
 
 After installation and restart, look for `Shelly discovery started` in the Indigo
 Event Log. That confirms the browser started; successful device connections and
@@ -77,12 +79,25 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.1.indigoPlugin.zip`, with portable Python
-dependencies and their license notices bundled. The checked-in source alone
-needs the dependency build before installation. Tests use an Indigo API double
-and a real localhost WebSocket connection to a simulated Shelly; they never
-operate home devices. CI runs the same tests and validates the release archive, including executing
-its entry point without `__file__` as Indigo does.
+The build writes `dist/Shelly-0.1.2.indigoPlugin.zip` using the checked-in portable
+Python dependencies and their license notices, with no network download needed.
+`tools/check_bundle.py --source` also validates direct installation of the
+repository bundle. To update dependencies, edit `requirements.txt`, run
+`.venv/bin/python tools/vendor.py`, then review and commit the resulting files.
+
+Tests use an Indigo API double and a real localhost WebSocket connection to a
+simulated Shelly; they never operate home devices. CI runs the same tests and
+validates both bundles, including executing the entry point without `__file__`
+as Indigo does.
+
+For a read-only network diagnostic using only the bundled libraries, run:
+
+```zsh
+.venv/bin/python -I -S tools/probe_discovery.py --read-status
+```
+
+This discovers endpoints and reads identity/status without creating Indigo
+devices or sending output-control commands.
 
 See [architecture and milestones](docs/architecture.md) and
 [third-party licenses](docs/third-party.md). Project code is [MIT licensed](LICENSE).

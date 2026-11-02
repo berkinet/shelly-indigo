@@ -27,6 +27,9 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
 - Optional shared admin password with SHA-256 RPC challenge authentication.
   Passwords stay in Indigo preferences and are never logged or committed.
 - Preference changes require a plugin restart.
+- The repository's plugin bundle includes unmodified portable dependencies.
+  Source installation and release installation follow the same dependency path;
+  startup checks for missing libraries before starting network workers.
 
 ## Following milestones
 

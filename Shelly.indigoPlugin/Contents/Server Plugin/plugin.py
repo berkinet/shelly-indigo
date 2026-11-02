@@ -1,5 +1,6 @@
 """Indigo adapter. Network workers never call Indigo APIs directly."""
 from pathlib import Path
+import importlib
 import queue
 import sys
 import threading
@@ -24,6 +25,17 @@ class Plugin(indigo.PluginBase):
         self.info = {}
         self.inventory = {}
 
+    def startup(self):
+        for module in ("zeroconf", "ifaddr", "websocket"):
+            try:
+                importlib.import_module(module)
+            except ImportError as exc:
+                missing = getattr(exc, "name", None) or module
+                message = (f"Missing Shelly dependency '{missing}'. Reinstall the complete "
+                           "Shelly plugin bundle; Contents/Packages must be included.")
+                self.logger.error(message)
+                raise RuntimeError(message) from exc
+
     def _emit(self, kind, address, payload=None):
         while not self.closing.is_set():
             try:
@@ -40,6 +52,7 @@ class Plugin(indigo.PluginBase):
         if address not in self.workers:
             worker = Worker(address, self._emit, self.pluginPrefs.get("password", ""), expected_id)
             self.workers[address] = worker
+            self.logger.info("Discovered Shelly endpoint %s; connecting", address)
             worker.start()
 
     def deviceStartComm(self, dev):
@@ -59,8 +72,7 @@ class Plugin(indigo.PluginBase):
                     discovery = Discovery(lambda address: self._emit("discover", address))
                     self.logger.info("Shelly discovery started (Gen2–Gen4 switches and inputs)")
                 except Exception as exc:
-                    self.logger.error("Bonjour discovery unavailable (%s); explicit hosts remain active",
-                                      type(exc).__name__)
+                    self.logger.error("Bonjour discovery unavailable: %s; explicit hosts remain active", exc)
             while True:
                 self.sleep(0.05)
                 for _ in range(100):
@@ -113,6 +125,7 @@ class Plugin(indigo.PluginBase):
                     self.workers.pop(old_address).stop()
                     del self.info[old_address]
             self.info[address] = info
+            self.logger.info("Connected to %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
             self._update(address, status)
         elif kind == "status" and address in self.info:

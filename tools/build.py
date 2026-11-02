@@ -1,10 +1,8 @@
-"""Build an installable bundle with portable dependencies and their license notices."""
+"""Build an installable plugin from checked-in source and portable dependencies."""
 from pathlib import Path
-import os
+from importlib.metadata import distributions
 import plistlib
 import shutil
-import subprocess
-import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'Shelly.indigoPlugin'
@@ -13,17 +11,20 @@ BUNDLE = BUILD / SOURCE.name
 
 
 def main():
+    packages = SOURCE / 'Contents/Packages'
+    installed = {dist.metadata['Name'].lower().replace('_', '-'): dist.version
+                 for dist in distributions(path=[str(packages)])}
+    for requirement in (ROOT / 'requirements.txt').read_text().splitlines():
+        if not requirement.strip() or requirement.startswith('#'):
+            continue
+        name, version = requirement.split('==')
+        if installed.get(name.lower().replace('_', '-')) != version:
+            raise RuntimeError(f'Missing or outdated {name}; run tools/vendor.py and commit its output')
+    if list(packages.rglob('*.so')) or list(packages.rglob('*.dylib')):
+        raise RuntimeError('Portable dependencies contain native extensions')
     if BUNDLE.exists():
         shutil.rmtree(BUNDLE)
-    shutil.copytree(SOURCE, BUNDLE, ignore=shutil.ignore_patterns('__pycache__', 'Packages', '*.pyc'))
-    # Pure Python distributions keep the artifact usable on both Intel and Apple Silicon.
-    subprocess.run([sys.executable, '-m', 'pip', 'install', '--disable-pip-version-check',
-                    '--no-compile', '--no-binary=zeroconf', '--no-cache-dir',
-                    '--target', str(BUNDLE / 'Contents/Packages'),
-                    '-r', str(ROOT / 'requirements.txt')], check=True,
-                   env={**os.environ, 'SKIP_CYTHON': '1'})
-    if list(BUNDLE.rglob('*.so')) or list(BUNDLE.rglob('*.dylib')):
-        raise RuntimeError('Portable bundle unexpectedly contains native extensions')
+    shutil.copytree(SOURCE, BUNDLE, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
     shutil.copy(ROOT / 'LICENSE', BUNDLE / 'Contents/LICENSE')
     shutil.copy(ROOT / 'docs/third-party.md', BUNDLE / 'Contents/THIRD-PARTY.md')
     version = plistlib.loads((BUNDLE / 'Contents/Info.plist').read_bytes())['PluginVersion']

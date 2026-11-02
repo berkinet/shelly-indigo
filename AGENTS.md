@@ -7,8 +7,10 @@
   complete installable `.indigoPlugin.zip` asset. Standing authorization covers
   committing, pushing, uploading and publishing; do not ask each time.
 - Build releases with `tools/build.py` and validate them with
-  `tools/check_bundle.py`. The checked-in source bundle needs its dependencies
-  built before installation. Preserve bundled dependency license notices.
+  `tools/check_bundle.py`. Also run `tools/check_bundle.py --source`: the
+  checked-in plugin must remain directly installable, with portable dependencies
+  included. Refresh dependencies with `tools/vendor.py` when requirements change.
+  Preserve bundled dependency license notices.
 - Run checks appropriate to the change. Review relevant test coverage at stage
   transitions and substantial design changes, with advance notice to the owner.
 - Per-device credentials are the intended design; the alpha's shared password
