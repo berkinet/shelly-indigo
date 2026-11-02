@@ -22,3 +22,15 @@ interruptions. Those remain hardware validation tasks; simulated automated tests
 cover their implemented protocol and lifecycle behavior.
 
 No physical output commands were sent during the read-only diagnostic probes.
+
+## 2 November 2026 — Gen4 button input, development version 0.1.4
+
+Read-only RPC queries to the owner's 1PM Mini Gen4 (S4SW-001P8EU, firmware 2.1.1)
+confirmed that its enabled input is configured as `button` and returns `state:
+null`. The updated worker and model recognized that actual hardware as a
+supported button input, initially with `stateKnown: false`. No device settings
+or physical outputs were changed.
+
+Press/release transitions have been validated with a real localhost WebSocket
+simulator and Indigo API test double. Physical press/release operation through
+the installed Indigo plugin still needs the owner's confirmation.

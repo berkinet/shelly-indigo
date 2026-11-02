@@ -25,7 +25,10 @@ class Simulator(socketserver.StreamRequestHandler):
                           'Connection: Upgrade\r\nSec-WebSocket-Accept: ' + accept + '\r\n\r\n').encode())
         output = False
         while True:
-            head = self.rfile.read(2)
+            try:
+                head = self.rfile.read(2)
+            except (ConnectionResetError, TimeoutError):
+                return
             if len(head) < 2 or head[0] & 15 == 8:
                 return
             size = head[1] & 127
@@ -38,12 +41,24 @@ class Simulator(socketserver.StreamRequestHandler):
             self.server.methods.put(method)
             if method == 'Shelly.GetDeviceInfo':
                 result = {'id': 'shelly-simulator', 'gen': 3, 'model': 'test'}
+            elif method == 'Input.GetConfig':
+                if getattr(self.server, 'button', False) and not getattr(self, 'pressed_sent', False):
+                    self.pressed_sent = True
+                    self.send_frame({'method': 'NotifyEvent', 'params': {'events': [
+                        {'component': 'input:0', 'event': 'btn_down', 'ts': 1}]}})
+                result = {'id': 0, 'type': 'button', 'enable': True}
+            elif method == 'Input.GetStatus':
+                self.send_frame({'method': 'NotifyEvent', 'params': {'events': [
+                    {'component': 'input:0', 'event': 'btn_up', 'ts': 2}]}})
+                result = {'id': 0, 'state': None}
             elif method == 'Switch.Set':
                 output = request['params']['on']
                 self.send_frame({'method': 'NotifyStatus', 'params': {'switch:0': {'output': output}}})
                 result = {'was_on': not output}
             else:
                 result = {'switch:0': {'id': 0, 'output': output}}
+                if getattr(self.server, 'button', False):
+                    result['input:0'] = {'id': 0, 'state': None}
             self.send_frame({'id': request['id'], 'result': result})
 
     def send_frame(self, frame):
@@ -78,3 +93,36 @@ class WebsocketTests(unittest.TestCase):
         self.assertFalse(worker.is_alive())
         with self.assertRaises(ConnectionError):
             worker.command('Switch.Set', {'id': 0, 'on': False})
+
+    def test_button_startup_event_and_release_use_only_read_requests(self):
+        server = socketserver.ThreadingTCPServer(('127.0.0.1', 0), Simulator)
+        server.daemon_threads = True
+        server.methods = queue.Queue()
+        server.button = True
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        events = queue.Queue()
+        worker = Worker(f'127.0.0.1:{server.server_address[1]}', lambda *args: events.put(args))
+        try:
+            worker.start()
+            kind, _, data = events.get(timeout=5)
+            self.assertEqual(kind, 'ready', data)
+            self.assertEqual(data[1]['input:0']['_inputType'], 'button')
+            kind, _, data = events.get(timeout=5)
+            self.assertEqual(kind, 'event', data)
+            self.assertEqual(data['events'][0]['event'], 'btn_down')
+            worker.command('Input.GetStatus', {'id': 0})
+            kind, _, data = events.get(timeout=5)
+            self.assertEqual(kind, 'event', data)
+            self.assertEqual(data['events'][0]['event'], 'btn_up')
+        finally:
+            worker.stop()
+            worker.join(5)
+            server.shutdown()
+            server.server_close()
+        methods = []
+        while not server.methods.empty():
+            methods.append(server.methods.get_nowait())
+        self.assertIn('Input.GetConfig', methods)
+        self.assertTrue(all('Get' in method for method in methods), methods)
+        self.assertFalse(worker.is_alive())

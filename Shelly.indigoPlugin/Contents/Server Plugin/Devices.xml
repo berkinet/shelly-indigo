@@ -64,7 +64,7 @@
     </States>
   </Device>
   <Device id="shellyInput" type="sensor">
-    <Name>Shelly Binary Input</Name>
+    <Name>Shelly Input</Name>
     <ConfigUI>
       <Field id="selectedChannel" type="menu" defaultValue="">
         <Label>Shelly channel:</Label>
@@ -103,6 +103,16 @@
         <ValueType>Boolean</ValueType>
         <TriggerLabel>Online</TriggerLabel>
         <ControlPageLabel>Online</ControlPageLabel>
+      </State>
+      <State id="stateKnown">
+        <ValueType>Boolean</ValueType>
+        <TriggerLabel>Input state known</TriggerLabel>
+        <ControlPageLabel>Input state known</ControlPageLabel>
+      </State>
+      <State id="inputMode">
+        <ValueType>String</ValueType>
+        <TriggerLabel>Input mode</TriggerLabel>
+        <ControlPageLabel>Input mode</ControlPageLabel>
       </State>
     </States>
   </Device>

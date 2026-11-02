@@ -1,5 +1,6 @@
 """One bounded command queue and reconnecting worker per physical device."""
 import queue
+import re
 import threading
 import time
 from .rpc import AuthenticationError, RpcError, Session
@@ -15,6 +16,7 @@ class Worker(threading.Thread):
         self.socket = None
         self.online = False
         self.command_lock = threading.Lock()
+        self.pending_notifications = []
 
     def command(self, method, params):
         with self.command_lock:
@@ -28,8 +30,26 @@ class Worker(threading.Thread):
             self.socket.abort()
 
     def _notify(self, method, params):
-        if method in ("NotifyStatus", "NotifyFullStatus"):
-            self.emit("status", self.address, params)
+        kind = "status" if method in ("NotifyStatus", "NotifyFullStatus") else "event" if method == "NotifyEvent" else None
+        if kind is None:
+            return
+        if not self.online:
+            if len(self.pending_notifications) >= 256:
+                raise RpcError("Too many notifications during connection setup")
+            self.pending_notifications.append((kind, params))
+        else:
+            self.emit(kind, self.address, params)
+
+    def _read_status(self, session):
+        status = session.call("Shelly.GetStatus")
+        for key, values in status.items():
+            if (not re.fullmatch(r"input:\d+", key) or not isinstance(values, dict)
+                    or isinstance(values.get("state"), bool)):
+                continue
+            config = session.call("Input.GetConfig", {"id": int(key.split(":")[1])})
+            values["_inputType"] = config.get("type")
+            values["_enabled"] = config.get("enable", True)
+        return status
 
     def run(self):
         import websocket
@@ -49,10 +69,13 @@ class Worker(threading.Thread):
                 if self.expected_id and identity != self.expected_id:
                     raise RpcError("Shelly identity changed at this address; rediscovery required")
                 self.expected_id = identity
-                status = session.call("Shelly.GetStatus")
+                status = self._read_status(session)
                 with self.command_lock:
                     self.online = True
                 self.emit("ready", self.address, (info, status))
+                for kind, params in self.pending_notifications:
+                    self.emit(kind, self.address, params)
+                self.pending_notifications.clear()
                 delay = 1
                 next_poll = time.monotonic() + 60
                 while not self.stopped.is_set():
@@ -62,15 +85,16 @@ class Worker(threading.Thread):
                         pass
                     else:
                         try:
-                            result = session.call(method, params)
-                            status = result if method == "Shelly.GetStatus" else session.call("Shelly.GetStatus")
+                            if method != "Shelly.GetStatus":
+                                session.call(method, params)
+                            status = self._read_status(session)
                             self._notify("NotifyStatus", status)
                         except AuthenticationError:
                             raise
                         except RpcError as exc:
                             self.emit("command_error", self.address, str(exc))
                     if time.monotonic() >= next_poll:
-                        self._notify("NotifyStatus", session.call("Shelly.GetStatus"))
+                        self._notify("NotifyStatus", self._read_status(session))
                         next_poll = time.monotonic() + 60
                     try:
                         session.listen()
@@ -85,6 +109,7 @@ class Worker(threading.Thread):
             finally:
                 with self.command_lock:
                     self.online = False
+                    self.pending_notifications.clear()
                     # Queued commands must never execute after reconnect.
                     while True:
                         try:

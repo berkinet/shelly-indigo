@@ -17,6 +17,6 @@
     <Description>Leave blank for unprotected Shelly devices. This is the local admin password, not your Shelly cloud login.</Description>
   </Field>
   <Field id="notice" type="label">
-    <Label>Alpha: switches, binary inputs and switch metering. Restart the plugin after changing preferences.</Label>
+    <Label>Alpha: switches, binary/button inputs and switch metering. Restart the plugin after changing preferences.</Label>
   </Field>
 </PluginConfig>

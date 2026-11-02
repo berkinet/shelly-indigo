@@ -60,6 +60,8 @@ class Plugin(indigo.PluginBase):
     def deviceStartComm(self, dev):
         address = dev.pluginProps.get("host")
         if address:
+            if dev.deviceTypeId == "shellyInput":
+                dev.stateListOrDisplayStateIdChanged()
             dev.setErrorStateOnServer("Connecting")
             self._emit("discover", address, dev.pluginProps.get("shellyId"))
             self._emit("refresh", address)
@@ -136,7 +138,16 @@ class Plugin(indigo.PluginBase):
             self._update(address, status)
         elif kind == "status" and address in self.info:
             self._update(address, payload)
+        elif kind == "event" and address in self.info:
+            for event in payload.get("events", []):
+                channel = self.inventory[address].apply_input_event(event)
+                if channel is not None:
+                    # Publish each transition separately, even when a frame contains
+                    # both a quick press and release for the same component.
+                    self._publish_channels(address, [channel])
         elif kind == "offline":
+            if address in self.inventory:
+                self.inventory[address].invalidate_buttons()
             with self.catalog_lock:
                 for key, entry in list(self.catalog.items()):
                     if entry["host"] == address:
@@ -145,20 +156,24 @@ class Plugin(indigo.PluginBase):
             for dev in self._devices():
                 if dev.enabled and dev.pluginProps.get("host") == address:
                     dev.updateStateOnServer("online", False)
+                    if dev.deviceTypeId == "shellyInput":
+                        dev.updateStateOnServer("stateKnown", False)
                     dev.setErrorStateOnServer("Offline")
         elif kind == "command_error":
             self.logger.error("Shelly %s: %s", address, payload)
 
     def _update(self, address, status):
+        self._publish_channels(address, self.inventory[address].merge(status))
+
+    def _publish_channels(self, address, channels):
         info = self.info[address]
         devices = {(dev.pluginProps.get("shellyId"), dev.pluginProps.get("component")): dev
                    for dev in self._devices()}
-        for channel in self.inventory[address].merge(status):
+        for channel in channels:
             key = (info["id"], channel.key)
             props = self._channel_properties(info, address, channel)
             selection = self._selection_key(props)
-            # Only binary inputs are offered; button/analog modes have no binary state.
-            supported = channel.kind != "input" or isinstance(channel.values.get("state"), bool)
+            supported = channel.supported
             with self.catalog_lock:
                 if supported:
                     self.catalog[selection] = {
@@ -187,10 +202,11 @@ class Plugin(indigo.PluginBase):
             states = channel.states()
             # Inputs do not expose metering fields in Devices.xml.
             if channel.kind == "input":
-                states = {k: v for k, v in states.items() if k == "onOffState"}
+                states = {k: v for k, v in states.items() if k in ("onOffState", "stateKnown", "inputMode")}
             states["online"] = True
             dev.updateStatesOnServer([{"key": k, "value": v} for k, v in states.items()])
-            dev.setErrorStateOnServer(None)
+            unknown = channel.kind == "input" and not states.get("stateKnown", False)
+            dev.setErrorStateOnServer("Waiting for input press/release" if unknown else None)
 
     @staticmethod
     def _selection_key(props):

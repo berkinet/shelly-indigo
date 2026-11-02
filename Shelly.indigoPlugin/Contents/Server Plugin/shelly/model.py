@@ -21,6 +21,8 @@ def endpoint(value):
 class Channel:
     key: str
     values: dict = field(default_factory=dict)
+    button_state: bool | None = None
+    event_timestamp: float | None = None
 
     @property
     def kind(self):
@@ -30,12 +32,27 @@ class Channel:
     def number(self):
         return int(self.key.split(":")[1])
 
+    @property
+    def supported(self):
+        return self.kind == "switch" or (
+            self.values.get("_enabled") is not False and (
+                isinstance(self.values.get("state"), bool) or self.values.get("_inputType") == "button"))
+
     def states(self):
         result = {}
         source = self.values
-        flag = "output" if self.kind == "switch" else "state"
-        if isinstance(source.get(flag), bool):
-            result["onOffState"] = source[flag]
+        if self.kind == "input":
+            state = source.get("state")
+            button = source.get("_inputType") == "button" and not isinstance(state, bool)
+            state = self.button_state if button else state
+            if source.get("_enabled") is False:
+                state = None
+            result["inputMode"] = "button" if button else "switch" if isinstance(state, bool) else "unknown"
+            result["stateKnown"] = isinstance(state, bool)
+            if result["stateKnown"]:
+                result["onOffState"] = state
+        elif isinstance(source.get("output"), bool):
+            result["onOffState"] = source["output"]
         for raw, state in (("apower", "powerWatts"), ("voltage", "voltage"),
                            ("current", "currentAmps")):
             value = source.get(raw)
@@ -59,6 +76,10 @@ class Inventory:
             if not re.fullmatch(r"(?:switch|input):\d+", key) or not isinstance(values, dict):
                 continue
             channel = self.channels.setdefault(key, Channel(key))
+            if (isinstance(values.get("state"), bool) or values.get("_enabled") is False
+                    or ("_inputType" in values and values["_inputType"] != channel.values.get("_inputType"))):
+                channel.button_state = None
+                channel.event_timestamp = None
             for name, value in values.items():
                 if isinstance(value, dict) and isinstance(channel.values.get(name), dict):
                     channel.values[name] = {**channel.values[name], **value}
@@ -66,3 +87,27 @@ class Inventory:
                     channel.values[name] = value
             changed.append(channel)
         return changed
+
+    def apply_input_event(self, event):
+        """Apply one physical transition; click classifications are not transitions."""
+        if not isinstance(event, dict):
+            return None
+        key, name = event.get("component", ""), event.get("event")
+        if not isinstance(key, str) or not re.fullmatch(r"input:\d+", key) or name not in ("btn_down", "btn_up"):
+            return None
+        channel = self.channels.setdefault(key, Channel(key))
+        if channel.values.get("_enabled") is False:
+            return None
+        timestamp = event.get("ts")
+        if isinstance(timestamp, (int, float)):
+            if channel.event_timestamp is not None and timestamp < channel.event_timestamp:
+                return None
+            channel.event_timestamp = timestamp
+        channel.values.update({"_inputType": "button", "state": None})
+        channel.button_state = name == "btn_down"
+        return channel
+
+    def invalidate_buttons(self):
+        for channel in self.channels.values():
+            channel.button_state = None
+            channel.event_timestamp = None

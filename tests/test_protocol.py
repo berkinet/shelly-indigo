@@ -86,3 +86,33 @@ class ProtocolTests(unittest.TestCase):
     def test_nullable_meter_values_do_not_break_channel_update(self):
         channel, = Inventory().merge({'switch:0': {'output': False, 'aenergy': None, 'voltage': None}})
         self.assertEqual(channel.states(), {'onOffState': False})
+
+    def test_button_state_follows_transitions_and_survives_null_polling(self):
+        inventory = Inventory()
+        button, = inventory.merge({'input:0': {'state': None, '_inputType': 'button', '_enabled': True}})
+        self.assertTrue(button.supported)
+        self.assertFalse(button.states()['stateKnown'])
+        self.assertNotIn('onOffState', button.states())
+        inventory.apply_input_event({'component': 'input:0', 'event': 'btn_down', 'ts': 10})
+        self.assertTrue(button.states()['onOffState'])
+        inventory.merge({'input:0': {'state': None, '_inputType': 'button', '_enabled': True}})
+        self.assertTrue(button.states()['onOffState'])
+        inventory.apply_input_event({'component': 'input:0', 'event': 'btn_up', 'ts': 11})
+        self.assertFalse(button.states()['onOffState'])
+        self.assertTrue(button.states()['stateKnown'])
+        self.assertIsNone(inventory.apply_input_event({'component': 'input:0', 'event': 'btn_down', 'ts': 9}))
+        self.assertFalse(button.states()['onOffState'])
+        inventory.invalidate_buttons()
+        self.assertFalse(button.states()['stateKnown'])
+        self.assertNotIn('onOffState', button.states())
+
+    def test_click_classifications_and_disabled_inputs_do_not_invent_press_state(self):
+        inventory = Inventory()
+        for name in ('single_push', 'double_push', 'long_push', 'config_changed'):
+            self.assertIsNone(inventory.apply_input_event({'component': 'input:0', 'event': name}))
+        self.assertEqual(inventory.channels, {})
+        self.assertIsNone(inventory.apply_input_event({'component': None, 'event': 'btn_up'}))
+        channel, = inventory.merge({'input:0': {'state': None, '_inputType': 'button', '_enabled': False}})
+        self.assertFalse(channel.supported)
+        self.assertIsNone(inventory.apply_input_event({'component': 'input:0', 'event': 'btn_down'}))
+        self.assertNotIn('onOffState', channel.states())

@@ -15,11 +15,15 @@ class Device:
         self.name = kwargs['name']
         self.enabled = True
         self.states = {}
+        self.history = []
         self.error = None
     def updateStatesOnServer(self, states):
+        self.history.append({state['key']: state['value'] for state in states})
         self.states.update({state['key']: state['value'] for state in states})
     def updateStateOnServer(self, key, value):
         self.states[key] = value
+    def stateListOrDisplayStateIdChanged(self):
+        pass
     def setErrorStateOnServer(self, error):
         self.error = error
     def replacePluginPropsOnServer(self, props):
@@ -220,3 +224,37 @@ class IndigoTests(unittest.TestCase):
         # A new full snapshot must remove channels no longer exposed by the device.
         self.plugin._handle('ready', address, (self.info, {'input:0': {'state': True}}))
         self.assertNotIn(key, dict(self.plugin.getShellyChannels(typeId='shellySwitch')))
+
+    def test_button_press_and_release_update_input_without_touching_relay(self):
+        status = {'switch:0': {'output': True},
+                  'input:0': {'state': None, '_inputType': 'button', '_enabled': True}}
+        worker = Mock()
+        self.plugin.workers[self.address] = worker
+        self.plugin._handle('ready', self.address, (self.info, status))
+        button = self.devices[2]
+        self.assertFalse(button.states['stateKnown'])
+        self.assertIn('Waiting', button.error)
+        self.assertIn('shelly-unit/input:0', dict(self.plugin.getShellyChannels(typeId='shellyInput')))
+        self.plugin._handle('event', self.address, {'events': [
+            {'component': 'input:0', 'event': 'btn_down', 'ts': 1}]})
+        self.assertTrue(button.states['onOffState'])
+        self.assertTrue(button.states['stateKnown'])
+        self.assertIsNone(button.error)
+        self.plugin._handle('status', self.address, {'input:0': {'state': None}})
+        self.assertTrue(button.states['onOffState'])
+        self.plugin._handle('event', self.address, {'events': [
+            {'component': 'input:0', 'event': 'btn_up', 'ts': 2}]})
+        self.assertFalse(button.states['onOffState'])
+        self.assertTrue(self.devices[1].states['onOffState'])
+        worker.command.assert_not_called()
+        button.history.clear()
+        self.plugin._handle('event', self.address, {'events': [
+            {'component': 'input:0', 'event': 'btn_down', 'ts': 3},
+            {'component': 'input:0', 'event': 'btn_up', 'ts': 4}]})
+        self.assertEqual([states['onOffState'] for states in button.history], [True, False])
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('offline', self.address, 'disconnect')
+        self.assertFalse(button.states['stateKnown'])
+        self.plugin._handle('ready', self.address, (self.info, status))
+        self.assertFalse(button.states['stateKnown'])
+        self.assertIn('Waiting', button.error)

@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.3 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.3-alpha.1/Shelly-0.1.3.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.4 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.4-alpha.1/Shelly-0.1.4.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -21,6 +21,8 @@ See [hardware validation](docs/hardware-validation.md) for the current evidence.
 - Discovered-channel dropdowns in Indigo device dialogs, with optional manual
   creation, automatic detail population and duplicate validation.
 - Indigo on/off/toggle control; WebSocket state notifications.
+- Momentary button input tracking: ON while held, OFF when released, independent
+  of the relay output.
 - Switch power, voltage, current and energy readings where provided by hardware.
 - Reconnect backoff, offline indication and periodic state reconciliation.
 - Stable channel identities across rediscovery and IP address changes.
@@ -54,7 +56,7 @@ Indigo stores the password in plugin preferences; the UI masks it.
 ## Selecting a Shelly in Indigo
 
 New Device and Edit Device dialogs now include a **Shelly channel** dropdown.
-Choose the Shelly plugin and either **Shelly Switch** or **Shelly Binary Input**;
+Choose the Shelly plugin and either **Shelly Switch** or **Shelly Input**;
 the dropdown lists matching discovered channels. Selecting one fills its device
 ID, channel, host, model and generation. Click **Refresh discovered channels**
 if discovery completed after opening the dialog.
@@ -68,7 +70,28 @@ For manual creation, uncheck **Create Indigo devices** in plugin preferences and
 restart the plugin. Discovery remains enabled and fills the dropdown, but new
 channels are created only when you select and save them. Existing Indigo devices
 remain configured and continue receiving updates. The selector currently offers
-switches and binary inputs; dimmers and other unsupported components are omitted.
+switches, binary inputs and button inputs; dimmers and other unsupported
+components are omitted.
+
+## Momentary buttons
+
+For a Shelly configured with Input type **Button**, use its separate `input:0`
+Indigo device to monitor the physical button. The input becomes ON on `btn_down`
+and OFF on `btn_up`. The `switch:0` device continues showing the relay output,
+which may stay ON after the button is released, depending on Shelly settings.
+The plugin does not change those settings or send relay commands when tracking
+button presses.
+
+Shelly button mode reports `state: null` when polled. The plugin reads the input
+configuration to discover these channels and tracks press/release notifications.
+Polling does not reset a held button. After startup or a disconnect, the input
+state is unknown until a press or release arrives; Indigo shows **Waiting for
+input press/release**, and the `stateKnown` state is false. No guessed release or
+fixed-duration pulse is generated. Button state depends on receiving both event
+transitions; polling cannot reconstruct a missed button transition.
+
+See [Shelly's Input API](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Input/)
+for the button notification and status semantics.
 
 ## Troubleshooting discovery
 
@@ -101,7 +124,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.3.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.4.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run
