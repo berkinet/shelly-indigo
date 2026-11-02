@@ -13,6 +13,9 @@
   Preserve bundled dependency license notices.
 - Run checks appropriate to the change. Review relevant test coverage at stage
   transitions and substantial design changes, with advance notice to the owner.
+- Roadmap decision (2 November 2026): target Gen3 and Gen4 for new development.
+  Gen1 implementation is removed from the roadmap. Retain existing Gen2
+  compatibility and regression coverage, with no planned Gen2-specific expansion.
 - Per-device credentials are the intended design; the alpha's shared password
   preference is temporary.
 

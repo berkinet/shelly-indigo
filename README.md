@@ -11,8 +11,8 @@ either bundle directly through Indigo.
 **Status: development alpha.** Indigo 2026.1 hardware testing has confirmed
 Shelly discovery, RPC communication and button-input tracking. Physical output
 control is still awaiting validation; dimmer commands are tested with simulated
-hardware. Gen1–Gen4 support is the project goal, not a claim of complete support
-in the published release.
+hardware. New development targets Gen3 and Gen4. Existing Gen2 compatibility is
+retained; Gen1 implementation and Gen2-specific expansion are off the roadmap.
 See [hardware validation](docs/hardware-validation.md) for the current evidence. This is a new project, not a fork of kw123/SHELLY.
 
 ## Initial alpha features
@@ -33,10 +33,11 @@ See [hardware validation](docs/hardware-validation.md) for the current evidence.
 - Stable channel identities across rediscovery and IP address changes.
 - Optional shared admin password; SHA-256 RPC authentication.
 
-Gen4 devices must be running Shelly's Wi-Fi/Ethernet RPC firmware. Gen1, covers,
-color/adjustable-white lights, standalone meters, analog inputs, click/long-press events and sleeping
-sensors are planned. Unimplemented components are ignored. Devices are never
-automatically deleted. Unsupported fields do not produce fabricated readings.
+Gen4 devices must be running Shelly's Wi-Fi/Ethernet RPC firmware. Planned work
+focuses on Gen3/Gen4 covers, color/adjustable-white lights, standalone meters,
+analog inputs, click/long-press events and sleeping sensors. Gen1 is unsupported
+and off the roadmap. Existing Gen2 devices continue using the current RPC adapter.
+Unimplemented components are ignored. Devices are never automatically deleted. Unsupported fields do not produce fabricated readings.
 
 ## Requirements and installation
 
@@ -235,7 +236,8 @@ of the Event Log setting. Available in 0.1.10 and later.
 
 ## Troubleshooting discovery
 
-Gen2–Gen4 discovery is implemented. Gen1 discovery is still planned.
+Gen2–Gen4 discovery is implemented. Gen1 discovery is off the roadmap; new
+development targets Gen3/Gen4 while retaining current Gen2 compatibility.
 
 If Indigo logs `Bonjour discovery unavailable (ModuleNotFoundError)`, check the
 installed `Shelly.indigoPlugin/Contents/Packages` directory. It must contain

@@ -8,7 +8,10 @@ protocol; locally installed Indigo plugins provide examples of the host API.
 
 Native Indigo integration with automatic discovery, explicit channel creation and local
 bidirectional communication, without Home Assistant or a cloud dependency.
-Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately.
+New development targets Gen3 and Gen4 RPC/WebSockets. By the owner's decision
+on 2 November 2026, Gen1 implementation and Gen2-specific expansion are removed
+from the roadmap. Existing Gen2 compatibility and its regression coverage are
+retained, including the existing Pro dimmer mapping.
 
 ## Initial alpha
 
@@ -83,10 +86,11 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
 
 ## Following milestones
 
-Hardware validation; per-device credentials; color/adjustable-white lights, covers and standalone
-meters; click/long-press event triggers; Gen1 discovery/REST/callback listener; sleeping
-sensors, IPv6 and broader component coverage. Gen4 support here means devices
-running the Shelly Wi-Fi/Ethernet RPC firmware, not Zigbee-only operation.
+For Gen3/Gen4: hardware validation; per-device credentials; color/adjustable-white
+lights, covers and standalone meters; click/long-press event triggers; sleeping
+sensors, IPv6 and broader component coverage. Gen1 discovery/REST/callback work
+is removed; there is no planned Gen2-specific expansion. Gen4 support here means
+devices running the Shelly Wi-Fi/Ethernet RPC firmware, not Zigbee-only operation.
 
 ## Sources
 
