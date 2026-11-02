@@ -45,9 +45,10 @@ def main():
         remote = run('gh', 'api', f'repos/{REPOSITORY}/commits/main', '--jq', '.sha', capture=True).strip()
         if remote != commit:
             raise SystemExit('Push this commit to main before publishing')
-        runs = json.loads(run('gh', 'run', 'list', '--repo', REPOSITORY, '--commit', commit,
-                              '--workflow', 'checks.yml', '--json', 'status,conclusion,event', capture=True))
-        if not any(item['event'] == 'push' and item['status'] == 'completed' and item['conclusion'] == 'success' for item in runs):
+        runs = json.loads(run('gh', 'run', 'list', '--repo', REPOSITORY, '--limit', '100',
+                              '--workflow', 'checks.yml', '--json', 'headSha,status,conclusion,event', capture=True))
+        if not any(item['headSha'] == commit and item['event'] == 'push' and item['status'] == 'completed'
+                   and item['conclusion'] == 'success' for item in runs):
             raise SystemExit('The pushed commit must pass the complete Ubuntu/macOS CI workflow before publishing')
         existing = subprocess.run(['gh', 'release', 'view', tag, '--repo', REPOSITORY], cwd=ROOT,
                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
