@@ -24,6 +24,8 @@ class Plugin(indigo.PluginBase):
         self.workers = {}
         self.info = {}
         self.inventory = {}
+        self.catalog = {}
+        self.catalog_lock = threading.Lock()
 
     def startup(self):
         for module in ("zeroconf", "ifaddr", "websocket"):
@@ -60,6 +62,7 @@ class Plugin(indigo.PluginBase):
         if address:
             dev.setErrorStateOnServer("Connecting")
             self._emit("discover", address, dev.pluginProps.get("shellyId"))
+            self._emit("refresh", address)
 
     def runConcurrentThread(self):
         discovery = None
@@ -115,7 +118,7 @@ class Plugin(indigo.PluginBase):
             worker.command(method, params)
         elif kind == "refresh":
             worker = self.workers.get(address)
-            if worker is not None:
+            if worker is not None and worker.online:
                 worker.command("Shelly.GetStatus", {})
         elif kind == "ready":
             info, status = payload
@@ -127,10 +130,17 @@ class Plugin(indigo.PluginBase):
             self.info[address] = info
             self.logger.info("Connected to %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
+            with self.catalog_lock:
+                self.catalog = {key: entry for key, entry in self.catalog.items()
+                                if entry["shellyId"] != info["id"]}
             self._update(address, status)
         elif kind == "status" and address in self.info:
             self._update(address, payload)
         elif kind == "offline":
+            with self.catalog_lock:
+                for key, entry in list(self.catalog.items()):
+                    if entry["host"] == address:
+                        self.catalog[key] = {**entry, "online": False}
             self.logger.warning("Shelly %s unavailable: %s", address, payload)
             for dev in self._devices():
                 if dev.enabled and dev.pluginProps.get("host") == address:
@@ -145,15 +155,21 @@ class Plugin(indigo.PluginBase):
                    for dev in self._devices()}
         for channel in self.inventory[address].merge(status):
             key = (info["id"], channel.key)
+            props = self._channel_properties(info, address, channel)
+            selection = self._selection_key(props)
+            # Only binary inputs are offered; button/analog modes have no binary state.
+            supported = channel.kind != "input" or isinstance(channel.values.get("state"), bool)
+            with self.catalog_lock:
+                if supported:
+                    self.catalog[selection] = {
+                        **props, "online": True,
+                        "label": f"{info.get('name') or info['id']} / {channel.key} ({address})"}
+                else:
+                    self.catalog.pop(selection, None)
             dev = devices.get(key)
             if dev is None:
-                # Only binary inputs are exposed in this milestone; analog/button-only
-                # inputs must not be presented as an always-off binary sensor.
-                if channel.kind == "input" and not isinstance(channel.values.get("state"), bool):
+                if not supported or not self.pluginPrefs.get("autoCreate", True):
                     continue
-                props = {"shellyId": info["id"], "component": channel.key,
-                         "host": address, "model": info.get("model", ""),
-                         "generation": str(info["gen"]), "SupportsOnState": True}
                 dev = indigo.device.create(
                     protocol=indigo.kProtocol.Plugin,
                     address=f"{info['id']}/{channel.key}",
@@ -175,6 +191,98 @@ class Plugin(indigo.PluginBase):
             states["online"] = True
             dev.updateStatesOnServer([{"key": k, "value": v} for k, v in states.items()])
             dev.setErrorStateOnServer(None)
+
+    @staticmethod
+    def _selection_key(props):
+        identity, component = props.get("shellyId"), props.get("component")
+        return f"{identity}/{component}" if identity and component else ""
+
+    @staticmethod
+    def _channel_properties(info, address, channel):
+        return {"shellyId": info["id"], "component": channel.key,
+                "host": address, "model": info.get("model", ""),
+                "generation": str(info["gen"]), "SupportsOnState": True,
+                "SupportsStatusRequest": True,
+                "address": f"{info['id']}/{channel.key}"}
+
+    def _channel_choices(self, typeId):
+        kind = {"shellySwitch": "switch", "shellyInput": "input"}.get(typeId)
+        with self.catalog_lock:
+            return {key: dict(entry) for key, entry in self.catalog.items()
+                    if entry["component"].split(":")[0] == kind}
+
+    def _saved_channel(self, devId, typeId):
+        if devId and int(devId) in indigo.devices:
+            dev = indigo.devices[int(devId)]
+            if dev.deviceTypeId == typeId and self._selection_key(dev.pluginProps):
+                return dict(dev.pluginProps)
+        return None
+
+    def getShellyChannels(self, filter="", valuesDict=None, typeId="", targetId=0):
+        choices = self._channel_choices(typeId)
+        saved = self._saved_channel(targetId, typeId)
+        if saved:
+            key = self._selection_key(saved)
+            choices.setdefault(key, {**saved, "online": False,
+                                     "label": f"{saved['shellyId']} / {saved['component']}"})
+        claimed = {self._selection_key(dev.pluginProps): dev for dev in self._devices()}
+        options = []
+        for key, entry in choices.items():
+            label = entry["label"]
+            owner = claimed.get(key)
+            if owner is not None and owner.id != int(targetId or 0):
+                label += f" [already configured: {owner.name}]"
+            if not entry["online"]:
+                label += " [offline]"
+            options.append((key, label))
+        placeholder = "Select a Shelly channel" if options else "No supported channels discovered yet"
+        return [("", placeholder)] + sorted(options, key=lambda item: item[1].casefold())
+
+    def getDeviceConfigUiValues(self, pluginProps, typeId, devId):
+        values = indigo.Dict(pluginProps)
+        values["selectedChannel"] = self._selection_key(pluginProps)
+        return values, indigo.Dict()
+
+    def shellyChannelSelected(self, valuesDict, typeId, devId):
+        selection = valuesDict.get("selectedChannel", "")
+        entry = self._channel_choices(typeId).get(selection)
+        saved = self._saved_channel(devId, typeId)
+        if entry is None and saved and self._selection_key(saved) == selection:
+            entry = saved
+        return self._fill_channel_selection(valuesDict, selection, entry)
+
+    @staticmethod
+    def _fill_channel_selection(valuesDict, selection, entry):
+        for key in ("shellyId", "component", "host", "model", "generation", "address"):
+            valuesDict[key] = entry.get(key, "") if entry else ""
+        if entry:
+            valuesDict["address"] = selection
+            valuesDict["SupportsOnState"] = True
+            valuesDict["SupportsStatusRequest"] = True
+        return valuesDict
+
+    def refreshShellyChannels(self, valuesDict, typeId, devId):
+        # Bonjour runs continuously; returning refreshes the dynamic list.
+        return self.shellyChannelSelected(valuesDict, typeId, devId)
+
+    def validateDeviceConfigUi(self, valuesDict, typeId, devId):
+        selection = valuesDict.get("selectedChannel", "")
+        choices = self._channel_choices(typeId)
+        saved = self._saved_channel(devId, typeId)
+        if saved:
+            choices.setdefault(self._selection_key(saved), saved)
+        message = None
+        if not selection or selection not in choices:
+            message = "Select a discovered channel matching this Indigo device type."
+        else:
+            for dev in self._devices():
+                if dev.id != int(devId or 0) and self._selection_key(dev.pluginProps) == selection:
+                    message = f"This channel is already configured as '{dev.name}'. Edit that device instead."
+                    break
+        if message:
+            return False, valuesDict, indigo.Dict({"selectedChannel": message, "showAlertText": message})
+        valuesDict = self._fill_channel_selection(valuesDict, selection, choices[selection])
+        return True, valuesDict
 
     def actionControlDevice(self, action, dev):
         actions = {indigo.kDeviceAction.TurnOn: "on", indigo.kDeviceAction.TurnOff: "off",

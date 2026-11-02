@@ -134,3 +134,89 @@ class IndigoTests(unittest.TestCase):
 
     def test_startup_loads_all_required_libraries(self):
         self.plugin.startup()
+
+    def test_device_dialog_xml_populates_type_filtered_channel_choices(self):
+        from pathlib import Path
+        from xml.etree import ElementTree
+        xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/Devices.xml'
+        root = ElementTree.parse(xml)
+        for type_id, component in [('shellySwitch', 'switch:0'), ('shellyInput', 'input:0')]:
+            with self.subTest(type_id=type_id):
+                ui = root.find(f"Device[@id='{type_id}']/ConfigUI")
+                field = ui.find("Field[@id='selectedChannel']")
+                self.assertEqual(field.get('type'), 'menu')
+                generate = getattr(self.plugin, field.find('List').get('method'))
+                options = generate(typeId=type_id)
+                self.assertEqual([key for key, label in options if key], [f'shelly-unit/{component}'])
+                self.assertIn('already configured', options[1][1])
+                changed = getattr(self.plugin, field.findtext('CallbackMethod'))
+                values = changed({'selectedChannel': options[1][0]}, type_id, 0)
+                self.assertEqual(values['host'], self.address)
+                self.assertEqual(values['component'], component)
+                self.assertEqual(values['model'], 'test')
+                button = ui.find("Field[@id='refreshChannels']")
+                refreshed = getattr(self.plugin, button.findtext('CallbackMethod'))(values, type_id, 0)
+                self.assertEqual(refreshed['selectedChannel'], options[1][0])
+
+    def test_manual_creation_mode_discovers_without_creating_until_selected(self):
+        self.devices.clear()
+        self.plugin = sys.modules['plugin'].Plugin('id', 'name', 'version', {'autoCreate': False})
+        self.plugin._handle('ready', self.address, (self.info, self.status))
+        self.assertEqual(len(self.devices), 0)
+        options = self.plugin.getShellyChannels(typeId='shellySwitch')
+        self.assertEqual(options[1][0], 'shelly-unit/switch:0')
+        self.assertNotIn('already configured', options[1][1])
+        ok, values = self.plugin.validateDeviceConfigUi({'selectedChannel': options[1][0]}, 'shellySwitch', 0)
+        self.assertTrue(ok)
+        self.assertEqual(values['address'], 'shelly-unit/switch:0')
+        self.assertTrue(values['SupportsStatusRequest'])
+        dev = self.devices.create(name='Kitchen', deviceTypeId='shellySwitch', props=values)
+        self.plugin._handle('status', self.address, {'switch:0': {'output': False}})
+        self.assertFalse(dev.states['onOffState'])
+        self.assertTrue(dev.states['online'])
+        self.assertEqual(len(self.devices), 1)
+        self.assertEqual(dev.states['powerWatts'], 10)
+        ok, _, errors = self.plugin.validateDeviceConfigUi(values, 'shellySwitch', 0)
+        self.assertFalse(ok)
+        self.assertIn('Kitchen', errors['selectedChannel'])
+        self.assertTrue(self.plugin.validateDeviceConfigUi(values, 'shellySwitch', dev.id)[0])
+
+    def test_existing_device_preselected_and_editable_before_rediscovery(self):
+        dev = self.devices[1]
+        self.plugin = sys.modules['plugin'].Plugin('id', 'name', 'version', {})
+        values, errors = self.plugin.getDeviceConfigUiValues(dev.pluginProps, dev.deviceTypeId, dev.id)
+        self.assertEqual(errors, {})
+        self.assertEqual(values['selectedChannel'], 'shelly-unit/switch:0')
+        choices = self.plugin.getShellyChannels(typeId='shellySwitch', targetId=dev.id)
+        self.assertIn('offline', choices[1][1])
+        self.assertNotIn('already configured', choices[1][1])
+        ok, saved = self.plugin.validateDeviceConfigUi(values, dev.deviceTypeId, dev.id)
+        self.assertTrue(ok)
+        self.assertEqual(saved['host'], self.address)
+
+    def test_invalid_or_wrong_type_selection_cannot_save_unbound_device(self):
+        for selection in ('', 'unknown/switch:0', 'shelly-unit/input:0'):
+            with self.subTest(selection=selection):
+                result = self.plugin.validateDeviceConfigUi({'selectedChannel': selection}, 'shellySwitch', 0)
+                self.assertFalse(result[0])
+                self.assertIn('selectedChannel', result[2])
+        values = {'selectedChannel': '', 'shellyId': 'old', 'host': self.address}
+        cleared = self.plugin.shellyChannelSelected(values, 'shellySwitch', 0)
+        self.assertEqual(cleared['host'], '')
+        self.assertEqual(cleared['shellyId'], '')
+
+    def test_selector_uses_new_address_and_marks_disconnected_channels(self):
+        self.plugin.workers[self.address] = Mock()
+        address = '192.0.2.2:80'
+        self.plugin._handle('ready', address, (self.info, self.status))
+        key = 'shelly-unit/switch:0'
+        options = dict(self.plugin.getShellyChannels(typeId='shellySwitch', targetId=1))
+        self.assertIn(address, options[key])
+        values = self.plugin.shellyChannelSelected({'selectedChannel': key}, 'shellySwitch', 1)
+        self.assertEqual(values['host'], address)
+        with self.assertLogs('test-plugin', level='WARNING'):
+            self.plugin._handle('offline', address, 'test disconnect')
+        self.assertIn('offline', dict(self.plugin.getShellyChannels(typeId='shellySwitch'))[key])
+        # A new full snapshot must remove channels no longer exposed by the device.
+        self.plugin._handle('ready', address, (self.info, {'input:0': {'state': True}}))
+        self.assertNotIn(key, dict(self.plugin.getShellyChannels(typeId='shellySwitch')))

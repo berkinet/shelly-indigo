@@ -3,6 +3,19 @@
   <Device id="shellySwitch" type="relay">
     <Name>Shelly Switch</Name>
     <ConfigUI>
+      <Field id="selectedChannel" type="menu" defaultValue="">
+        <Label>Shelly channel:</Label>
+        <List class="self" method="getShellyChannels" dynamicReload="true" />
+        <CallbackMethod>shellyChannelSelected</CallbackMethod>
+      </Field>
+      <Field id="refreshChannels" type="button">
+        <Label />
+        <Title>Refresh discovered channels</Title>
+        <CallbackMethod>refreshShellyChannels</CallbackMethod>
+      </Field>
+      <Field id="channelHelp" type="label">
+        <Label>Channels marked already configured have an Indigo device. Edit that device to avoid creating a duplicate.</Label>
+      </Field>
       <Field id="shellyId" type="textfield" readOnly="true">
         <Label>Shelly ID:</Label>
       </Field>
@@ -17,6 +30,9 @@
       </Field>
       <Field id="generation" type="textfield" readOnly="true">
         <Label>Generation:</Label>
+      </Field>
+      <Field id="address" type="textfield" hidden="true">
+        <Label>Address:</Label>
       </Field>
     </ConfigUI>
     <States>
@@ -50,6 +66,19 @@
   <Device id="shellyInput" type="sensor">
     <Name>Shelly Binary Input</Name>
     <ConfigUI>
+      <Field id="selectedChannel" type="menu" defaultValue="">
+        <Label>Shelly channel:</Label>
+        <List class="self" method="getShellyChannels" dynamicReload="true" />
+        <CallbackMethod>shellyChannelSelected</CallbackMethod>
+      </Field>
+      <Field id="refreshChannels" type="button">
+        <Label />
+        <Title>Refresh discovered channels</Title>
+        <CallbackMethod>refreshShellyChannels</CallbackMethod>
+      </Field>
+      <Field id="channelHelp" type="label">
+        <Label>Channels marked already configured have an Indigo device. Edit that device to avoid creating a duplicate.</Label>
+      </Field>
       <Field id="shellyId" type="textfield" readOnly="true">
         <Label>Shelly ID:</Label>
       </Field>
@@ -64,6 +93,9 @@
       </Field>
       <Field id="generation" type="textfield" readOnly="true">
         <Label>Generation:</Label>
+      </Field>
+      <Field id="address" type="textfield" hidden="true">
+        <Label>Address:</Label>
       </Field>
     </ConfigUI>
     <States>

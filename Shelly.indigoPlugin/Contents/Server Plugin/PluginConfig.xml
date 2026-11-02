@@ -1,18 +1,22 @@
-<?xml version="1.0"?>
+<?xml version='1.0' encoding='utf-8'?>
 <PluginConfig>
-    <Field id="discovery" type="checkbox" defaultValue="true">
-        <Label>Discovery:</Label>
-        <Description>Automatically discover Gen2–Gen4 devices and create supported channels</Description>
-    </Field>
-    <Field id="hosts" type="textfield" defaultValue="">
-        <Label>Additional hosts:</Label>
-        <Description>Optional comma-separated IP addresses or hostnames for devices on other subnets.</Description>
-    </Field>
-    <Field id="password" type="textfield" secure="true" defaultValue="">
-        <Label>Shelly password:</Label>
-        <Description>Shared admin password for protected devices. Leave blank if authentication is disabled.</Description>
-    </Field>
-    <Field id="notice" type="label">
-        <Label>Alpha: switches, binary inputs and switch metering. Restart the plugin after changing preferences.</Label>
-    </Field>
+  <Field id="discovery" type="checkbox" defaultValue="true">
+    <Label>Discovery:</Label>
+    <Description>Automatically discover Gen2–Gen4 Shelly devices</Description>
+  </Field>
+  <Field id="autoCreate" type="checkbox" defaultValue="true">
+    <Label>Create Indigo devices:</Label>
+    <Description>Automatically create supported channels. Uncheck to select channels manually in New Device.</Description>
+  </Field>
+  <Field id="hosts" type="textfield" defaultValue="">
+    <Label>Additional hosts:</Label>
+    <Description>Optional comma-separated IP addresses or hostnames for devices on other subnets.</Description>
+  </Field>
+  <Field id="password" type="textfield" secure="true" defaultValue="">
+    <Label>Shared device password:</Label>
+    <Description>Leave blank for unprotected Shelly devices. This is the local admin password, not your Shelly cloud login.</Description>
+  </Field>
+  <Field id="notice" type="label">
+    <Label>Alpha: switches, binary inputs and switch metering. Restart the plugin after changing preferences.</Label>
+  </Field>
 </PluginConfig>

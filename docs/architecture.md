@@ -17,6 +17,11 @@ Gen2–Gen4 RPC/WebSockets first; Gen1 HTTP REST and callbacks follow separately
 - One WebSocket worker per physical unit, serialized RPC calls, bounded command
   queues, exponential reconnect backoff and a 60-second reconciliation read.
 - Stable Indigo identity uses Shelly device ID + component key, never IP address.
+- A locked snapshot of supported discovered channels feeds Indigo's device-dialog
+  dropdowns. Saved devices keep their selections while offline. Validation fills
+  connection details and rejects duplicate or mismatched channel bindings.
+- Automatic channel creation remains the default; an optional manual mode keeps
+  discovery active and creates Indigo devices only when selected and saved.
 - Switches and binary inputs become separate Indigo relay/sensor devices. Switch
   metering is exposed where present. Unsupported components are ignored.
 - Notifications are partial updates. Missing fields preserve known values.
@@ -52,3 +57,9 @@ The owner authorizes committing, pushing and publishing releases with an
 installable plugin archive and release notes without repeated confirmation.
 Do not install or enable this alpha in the live Indigo server as a side effect
 of building or publishing it. Record hardware testing status honestly.
+
+## Indigo configuration API references
+
+- https://docs.indigodomo.com/2025.2/plugin-dev/reference/xml/configui/dynamic-lists/
+- https://docs.indigodomo.com/2025.2/plugin-dev/reference/xml/configui/button/
+- https://docs.indigodomo.com/2025.2/plugin-dev/reference/plugin-py/device-methods/

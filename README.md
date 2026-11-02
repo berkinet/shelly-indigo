@@ -3,7 +3,7 @@
 An independent native Indigo plugin for local control of Shelly devices.
 No Home Assistant, MQTT broker or Shelly cloud account is required.
 
-**Installable download:** [Shelly 0.1.2 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.2-alpha.1/Shelly-0.1.2.indigoPlugin.zip).
+**Installable download:** [Shelly 0.1.3 plugin package](https://github.com/berkinet/shelly-indigo/releases/download/v0.1.3-alpha.1/Shelly-0.1.3.indigoPlugin.zip).
 The release asset and the repository's `Shelly.indigoPlugin` directory both
 include the libraries required for discovery and communication. You can install
 either bundle directly through Indigo.
@@ -18,6 +18,8 @@ See [hardware validation](docs/hardware-validation.md) for the current evidence.
 
 - Automatic IPv4 Bonjour discovery of Gen2–Gen4 RPC devices.
 - Automatic creation of separate Indigo devices for switches and binary inputs.
+- Discovered-channel dropdowns in Indigo device dialogs, with optional manual
+  creation, automatic detail population and duplicate validation.
 - Indigo on/off/toggle control; WebSocket state notifications.
 - Switch power, voltage, current and energy readings where provided by hardware.
 - Reconnect backoff, offline indication and periodic state reconciliation.
@@ -48,6 +50,25 @@ with discovery enabled creates Indigo devices automatically. It does not change
 Shelly settings or operate outputs until you issue an Indigo action. This alpha
 supports one shared password, not different credentials for each physical unit.
 Indigo stores the password in plugin preferences; the UI masks it.
+
+## Selecting a Shelly in Indigo
+
+New Device and Edit Device dialogs now include a **Shelly channel** dropdown.
+Choose the Shelly plugin and either **Shelly Switch** or **Shelly Binary Input**;
+the dropdown lists matching discovered channels. Selecting one fills its device
+ID, channel, host, model and generation. Click **Refresh discovered channels**
+if discovery completed after opening the dialog.
+
+Automatic Indigo device creation stays enabled by default. Channels already
+configured show their Indigo device names in the dropdown; edit those existing
+devices instead of creating duplicates. Existing devices have their channel
+preselected, including while offline or before discovery completes after restart.
+
+For manual creation, uncheck **Create Indigo devices** in plugin preferences and
+restart the plugin. Discovery remains enabled and fills the dropdown, but new
+channels are created only when you select and save them. Existing Indigo devices
+remain configured and continue receiving updates. The selector currently offers
+switches and binary inputs; dimmers and other unsupported components are omitted.
 
 ## Troubleshooting discovery
 
@@ -80,7 +101,7 @@ python3 -m venv .venv
 .venv/bin/python tools/check_bundle.py
 ```
 
-The build writes `dist/Shelly-0.1.2.indigoPlugin.zip` using the checked-in portable
+The build writes `dist/Shelly-0.1.3.indigoPlugin.zip` using the checked-in portable
 Python dependencies and their license notices, with no network download needed.
 `tools/check_bundle.py --source` also validates direct installation of the
 repository bundle. To update dependencies, edit `requirements.txt`, run
