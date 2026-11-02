@@ -165,6 +165,26 @@ class StabilizationTests(unittest.TestCase):
                 self.assertEqual(field.get('readonly'), 'true')
                 self.assertNotIn('readOnly', field.attrib)
 
+    def test_creation_collision_reports_cause_and_other_channels_continue(self):
+        self.host.devices.clear()
+        create = self.host.devices.create
+        def collision(**kwargs):
+            if kwargs['deviceTypeId'] == 'shellySwitch':
+                raise ValueError('Device name already exists')
+            return create(**kwargs)
+        with patch('plugin.indigo.device.create', side_effect=collision), self.assertLogs('test-plugin', level='ERROR') as logs:
+            self.plugin._handle('create_devices', '', {'includeSwitches': True, 'includeInputs': True})
+        self.assertIn('Device name already exists', str(logs.output))
+        self.assertEqual([dev.deviceTypeId for dev in self.host.devices.values()], ['shellyInput'])
+
+    def test_expected_offline_command_failure_names_device_and_endpoint_without_traceback(self):
+        self.plugin._emit('command', '', (1, 'on'))
+        with self.assertLogs('test-plugin', level='WARNING') as logs:
+            self.plugin._process_events()
+        self.assertIn(self.host.devices[1].name, str(logs.output))
+        self.assertIn(self.host.address, str(logs.output))
+        self.assertFalse(any(record.exc_info for record in logs.records))
+
 
 class CredentialTests(unittest.TestCase):
     def test_unknown_discovery_does_not_receive_shared_password(self):

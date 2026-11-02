@@ -141,7 +141,16 @@ class Plugin(indigo.PluginBase):
                 self._handle(*event)
             except (ConnectionError, queue.Full, ValueError, KeyError) as exc:
                 kind, address, payload, *_ = event
-                context = f"device {payload[0]} {payload[1]}" if kind == "command" else kind
+                context = kind
+                if kind == "command":
+                    context = f"device {payload[0]} {payload[1]}"
+                    try:
+                        dev = indigo.devices[payload[0]]
+                    except KeyError:
+                        pass
+                    else:
+                        context = f"{dev.name} (Indigo {dev.id}) {payload[1]}"
+                        address = dev.pluginProps.get("host", address)
                 self.logger.warning("Shelly %s at %s rejected: %s", context, address or "configured endpoint", exc)
             except Exception:
                 self.logger.exception("Could not process Shelly device update")
@@ -472,8 +481,9 @@ class Plugin(indigo.PluginBase):
                         deviceTypeId=self._expected_device_type(props),
                         props=props)
                 except Exception as exc:
-                    self.logger.error("Could not create %s / %s in Indigo (%s); other channels will continue",
-                                      info["id"], channel.key, type(exc).__name__)
+                    detail = " ".join(str(exc).split())[:240]
+                    self.logger.error("Could not create %s / %s in Indigo (%s: %s); other channels will continue",
+                                      info["id"], channel.key, type(exc).__name__, detail)
                     continue
                 devices[key] = dev
                 created += 1

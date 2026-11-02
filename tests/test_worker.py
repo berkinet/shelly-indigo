@@ -46,7 +46,7 @@ class WorkerTests(unittest.TestCase):
                 handler.server.controls.put((0, request))
                 handler.connection.shutdown(socket.SHUT_RDWR)
                 return True
-        with LocalShelly(on_request=disconnect) as sim:
+        with LocalShelly(gen=2, on_request=disconnect) as sim:
             events = queue.Queue()
             worker = Worker(sim.endpoint, lambda *args: events.put(args))
             try:
