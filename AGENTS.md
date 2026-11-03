@@ -21,6 +21,9 @@
   explicitly configured hosts; never send it automatically to new unassigned
   Bonjour discoveries.
 
+- Keep the project focused on direct local discovery, state reporting and control
+  with few moving parts. Device setup and administration, including firmware
+  updates, belong in the Shelly app or device web interfaces.
 - Discovery must run continuously without creating Indigo devices implicitly.
   Create devices only through the explicit plugin menu command or an individual
   New Device save. Ignore older automatic-creation preferences.

@@ -1,9 +1,17 @@
 # Shelly for Indigo — 0.2.1 beta
 
-Independent, local Shelly integration for Indigo using RPC over WebSockets.
-Discovery runs continuously; creating Indigo devices is an explicit action.
-No Shelly cloud account, MQTT broker or Home Assistant is required.
-This is a new project, not a fork of kw123/SHELLY.
+Shelly for Indigo follows a simple design philosophy: small, lightweight software
+built to meet a well-defined need. It provides direct, local communication between
+Indigo and Shelly Wi-Fi devices, with a focus on discovery, state reporting and
+control.
+
+The goal is an easy-to-maintain integration with few moving parts: Indigo, the
+plugin and your Shelly devices. Device setup and administration—including firmware
+updates—remain the responsibility of the Shelly app or each device’s web interface.
+
+Communication uses RPC over WebSockets. Discovery runs continuously; creating Indigo
+devices is an explicit action. No Shelly cloud account, MQTT broker or Home Assistant
+is required. This is a new project, not a fork of kw123/SHELLY.
 
 ## Supported devices and channels
 

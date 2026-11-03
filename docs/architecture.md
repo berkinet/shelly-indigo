@@ -3,6 +3,17 @@
 Independent implementation using Shelly's documented RPC APIs and Indigo's native
 plugin API. No source from kw123/SHELLY has been incorporated.
 
+## Design philosophy
+
+Shelly for Indigo follows a simple design philosophy: small, lightweight software
+built to meet a well-defined need. It provides direct, local communication between
+Indigo and Shelly Wi-Fi devices, with a focus on discovery, state reporting and
+control.
+
+The goal is an easy-to-maintain integration with few moving parts: Indigo, the
+plugin and your Shelly devices. Device setup and administration—including firmware
+updates—remain the responsibility of the Shelly app or each device’s web interface.
+
 ## Scope and invariants
 
 Indigo 2026.1 / API 3.9 / Python 3.13. New work targets Gen3/Gen4 RPC units;
