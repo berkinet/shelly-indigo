@@ -49,7 +49,7 @@ class StabilizationTests(unittest.TestCase):
         self.assertFalse(self.host.devices[1].states['onOffState'])
 
     def test_pre_snapshot_press_is_delivered_but_later_sample_controls_final_position(self):
-        worker = Worker(self.host.address, self.plugin._handle)
+        worker = Worker(self.host.address, self.plugin._handle, sample_reader=lambda *a: {0: False})
         worker.device_info = {**self.host.info, 'gen': 4, 'mac': 'E4B06365AF10'}
         worker.online = True
         self.plugin._handle('status', self.host.address, {'input:0': {'state': None, '_inputType': 'button'}})
@@ -62,8 +62,10 @@ class StabilizationTests(unittest.TestCase):
             {'id': 3, 'result': {'type': 'button', 'enable': True}},
             {'id': 4, 'result': {'enable': True}},
         ]), worker._notify)
-        with patch('shelly.worker.read_button_inputs', return_value={0: False}):
-            worker._reconcile(session, refresh_config=True)
+        worker._reconcile(session, refresh_config=True)
+        worker._sample_buttons(time.monotonic())
+        time.sleep(.01)
+        worker._sample_buttons(time.monotonic())
         self.assertTrue(any(change.get('onOffState') is True for change in self.host.devices[2].history))
         self.assertFalse(self.host.devices[2].states['onOffState'])
 

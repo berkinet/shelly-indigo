@@ -1,0 +1,233 @@
+{
+  "provenance": {
+    "kind": "recorded-device",
+    "transport": "read-only HTTP RPC GET",
+    "capture_date": "2026-11-03",
+    "gen": 4,
+    "model": "S4SW-001P8EU",
+    "firmware": "2.1.1",
+    "firmware_id": "20261026-151134/2.1.1-g07e9ad2",
+    "redactions": [
+      "synthetic identity/MAC and network addresses",
+      "device names, SSIDs, location and credentials sanitized",
+      "keys, nulls and nonsensitive values retained"
+    ]
+  },
+  "responses": [
+    {
+      "method": "Shelly.GetDeviceInfo",
+      "params": {},
+      "result": {
+        "name": "Fixture name 1",
+        "id": "shelly1pmminig4-020000000001",
+        "mac": "020000000001",
+        "slot": 1,
+        "model": "S4SW-001P8EU",
+        "gen": 4,
+        "fw_id": "20261026-151134/2.1.1-g07e9ad2",
+        "ver": "2.1.1",
+        "app": "Mini1PMG4",
+        "auth_en": false,
+        "auth_domain": null,
+        "matter": true,
+        "provision": "complete",
+        "enhanced_security": false
+      }
+    },
+    {
+      "method": "Shelly.GetStatus",
+      "params": {},
+      "result": {
+        "ble": {
+          "addr": "02:00:00:01:00:01,p",
+          "flags": [
+            "advertising"
+          ]
+        },
+        "bthome": {},
+        "cloud": {
+          "connected": true
+        },
+        "infino:0": {
+          "id": 0
+        },
+        "input:0": {
+          "id": 0,
+          "state": null
+        },
+        "knx": {},
+        "matter": {
+          "num_fabrics": 0,
+          "commissionable": true
+        },
+        "modbus": {},
+        "mqtt": {
+          "connected": false
+        },
+        "switch:0": {
+          "id": 0,
+          "source": "button",
+          "tag": null,
+          "output": false,
+          "apower": 0.0,
+          "voltage": 234.5,
+          "freq": 50.1,
+          "current": 0.0,
+          "aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "ret_aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "counts": {
+            "on_time": 26220,
+            "on_time_rst_ts": 0,
+            "switch_on": 22,
+            "switch_on_rst_ts": 0,
+            "on_above_thr": 0,
+            "on_above_thr_rst_ts": 0
+          },
+          "temperature": {
+            "tC": 53.8,
+            "tF": 128.9
+          }
+        },
+        "sys": {
+          "mac": "020000000001",
+          "restart_required": false,
+          "time": "06:32",
+          "unixtime": 1793709139,
+          "last_sync_ts": 1793708366,
+          "uptime": 781,
+          "ram_size": 343484,
+          "ram_free": 132024,
+          "ram_min_free": 117344,
+          "fs_size": 917504,
+          "fs_free": 458752,
+          "cfg_rev": 27,
+          "kvs_rev": 0,
+          "schedule_rev": 1,
+          "webhook_rev": 0,
+          "btrelay_rev": 0,
+          "bthc_rev": 0,
+          "available_updates": {
+            "beta": {
+              "version": "2.2.0-beta2"
+            }
+          },
+          "alt": {
+            "Mini1PMG4ZB": {
+              "name": "Fixture name 2",
+              "desc": "Shelly Mini 1 PM Gen4 with Zigbee",
+              "beta": {
+                "version": "2.2.0-beta2",
+                "build_id": "20261026-125933/2.2.0-beta2-gb8c68b1"
+              },
+              "stable": {
+                "version": "2.1.1",
+                "build_id": "20261026-151139/2.1.1-g07e9ad2"
+              }
+            }
+          },
+          "reset_reason": 1,
+          "utc_offset": 0
+        },
+        "wifi": {
+          "sta_ip": "192.0.2.10",
+          "status": "got ip",
+          "ssid": "Fixture SSID 3",
+          "channel": 11,
+          "rssi": -57,
+          "bssid": "02:00:00:01:00:02",
+          "sta_ip6": [
+            "2001:db8::2",
+            "2001:db8::3"
+          ]
+        },
+        "ws": {
+          "connected": false
+        }
+      }
+    },
+    {
+      "method": "Sys.GetConfig",
+      "params": {},
+      "result": {
+        "device": {
+          "name": "Fixture name 1",
+          "mac": "020000000001",
+          "fw_id": "20261026-151134/2.1.1-g07e9ad2",
+          "discoverable": true,
+          "eco_mode": false,
+          "tls_check_cert_validity_time": true,
+          "enhanced_security": false
+        },
+        "location": {
+          "tz": "Etc/UTC",
+          "lat": 0.0,
+          "lon": 0.0
+        },
+        "debug": {
+          "level": 2,
+          "file_level": null,
+          "mqtt": {
+            "enable": false
+          },
+          "websocket": {
+            "enable": false
+          },
+          "file_log": {
+            "enable": false
+          },
+          "udp": {
+            "addr": null
+          }
+        },
+        "ui_data": {
+          "device_revision": "1-24"
+        },
+        "rpc_udp": {
+          "dst_addr": null,
+          "listen_port": null
+        },
+        "sntp": {
+          "server": "fixture.example.invalid"
+        },
+        "cfg_rev": 27
+      }
+    },
+    {
+      "method": "Input.GetConfig",
+      "params": {
+        "id": 0
+      },
+      "result": {
+        "id": 0,
+        "name": null,
+        "type": "button",
+        "enable": true,
+        "invert": false,
+        "factory_reset": true
+      }
+    },
+    {
+      "method": "Modbus.GetConfig",
+      "params": {},
+      "result": {
+        "enable": true
+      }
+    }
+  ]
+}

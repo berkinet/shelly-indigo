@@ -3,6 +3,7 @@ from copy import deepcopy
 import queue
 import socket
 import threading
+import time
 import unittest
 from unittest.mock import patch
 import support
@@ -106,28 +107,40 @@ class WorkerTests(unittest.TestCase):
         for held in (False, True):
             with self.subTest(held=held):
                 emitted = []
-                worker = Worker('192.0.2.1:80', lambda *args: emitted.append(args))
-                worker.device_info = {'id': 'unit', 'gen': 4, 'mac': 'E4B06365AF10'}
+                reader = lambda *args: {0: held}
+                worker = Worker('192.0.2.1:80', lambda *args: emitted.append(args), sample_reader=reader)
+                worker.device_info = {'id': 'unit', 'gen': 4, 'mac': '020000000001'}
                 session = ReadSession({'input:0': {'state': None}})
-                with patch('shelly.worker.read_button_inputs', return_value={0: held}) as read:
-                    worker._reconcile(session, initial=True, refresh_config=True)
-                read.assert_called_once_with('192.0.2.1', 'E4B06365AF10', [0])
-                ready = next(event for event in emitted if event[0] == 'ready')
-                channel, = Inventory().merge(ready[2][1])
-                self.assertTrue(channel.states()['stateKnown'])
-                self.assertIs(channel.states()['onOffState'], held)
+                worker._reconcile(session, initial=True, refresh_config=True)
+                inventory = Inventory()
+                inventory.merge(next(e for e in emitted if e[0] == 'ready')[2][1])
+                worker._sample_buttons(time.monotonic())
+                deadline = time.monotonic() + 1
+                while not any(e[0] == 'status' for e in emitted) and time.monotonic() < deadline:
+                    time.sleep(.001)
+                    worker._sample_buttons(time.monotonic())
+                for kind, _, payload in emitted:
+                    if kind == 'status':
+                        inventory.merge(payload)
+                self.assertTrue(inventory.channels['input:0'].states()['stateKnown'])
+                self.assertIs(inventory.channels['input:0'].states()['onOffState'], held)
                 self.assertTrue(all('Get' in method for method in session.calls))
+                worker.stop()
 
     def test_optional_modbus_disabled_or_unreachable_keeps_unknown_not_off(self):
         for enabled in (False, True):
             with self.subTest(enabled=enabled):
-                worker = Worker('192.0.2.1:80', lambda *args: None)
-                worker.device_info = {'id': 'unit', 'gen': 4, 'mac': 'E4B06365AF10'}
-                session = ReadSession({'input:0': {'state': None}}, modbus=enabled)
-                with patch('shelly.worker.read_button_inputs', side_effect=TimeoutError) as read:
-                    snapshot = worker._read_status(session)
-                self.assertEqual(read.call_count, int(enabled))
-                self.assertFalse(snapshot.samples)
-                channel, = Inventory().merge(snapshot.status)
+                emitted = []
+                def unavailable(*args):
+                    raise TimeoutError()
+                worker = Worker('192.0.2.1:80', lambda *args: emitted.append(args), sample_reader=unavailable)
+                worker.device_info = {'id': 'unit', 'gen': 4, 'mac': '020000000001'}
+                worker._reconcile(ReadSession({'input:0': {'state': None}}, modbus=enabled), initial=True)
+                worker._sample_buttons(time.monotonic())
+                time.sleep(.01)
+                worker._sample_buttons(time.monotonic())
+                self.assertFalse(any(e[0] == 'status' for e in emitted))
+                channel, = Inventory().merge(next(e for e in emitted if e[0] == 'ready')[2][1])
                 self.assertFalse(channel.states()['stateKnown'])
                 self.assertNotIn('onOffState', channel.states())
+                worker.stop()

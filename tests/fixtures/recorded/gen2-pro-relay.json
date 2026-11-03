@@ -1,0 +1,404 @@
+{
+  "provenance": {
+    "kind": "recorded-device",
+    "transport": "read-only HTTP RPC GET",
+    "capture_date": "2026-11-03",
+    "gen": 2,
+    "model": "SPSW-104PE16EU",
+    "firmware": "2.2.0-beta2",
+    "firmware_id": "20261026-125845/2.2.0-beta2-gb8c68b1",
+    "redactions": [
+      "synthetic identity/MAC and network addresses",
+      "device names, SSIDs, location and credentials sanitized",
+      "keys, nulls and nonsensitive values retained"
+    ]
+  },
+  "responses": [
+    {
+      "method": "Shelly.GetDeviceInfo",
+      "params": {},
+      "result": {
+        "name": "Fixture name 1",
+        "id": "shellypro4pm-020000000004",
+        "mac": "020000000004",
+        "slot": 1,
+        "model": "SPSW-104PE16EU",
+        "gen": 2,
+        "fw_id": "20261026-125845/2.2.0-beta2-gb8c68b1",
+        "ver": "2.2.0-beta2",
+        "app": "Pro4PM",
+        "auth_en": false,
+        "auth_domain": null,
+        "provision": "complete",
+        "enhanced_security": false
+      }
+    },
+    {
+      "method": "Shelly.GetStatus",
+      "params": {},
+      "result": {
+        "ble": {
+          "addr": "02:00:00:01:00:01,p"
+        },
+        "bthome": {},
+        "cloud": {
+          "connected": true
+        },
+        "eth": {
+          "ip": "192.0.2.21",
+          "ip6": [
+            "2001:db8::3",
+            "2001:db8::4",
+            "2001:db8::5",
+            "2001:db8::6",
+            "2001:db8::7"
+          ]
+        },
+        "infino:0": {
+          "id": 0
+        },
+        "infino:1": {
+          "id": 1
+        },
+        "infino:2": {
+          "id": 2
+        },
+        "infino:3": {
+          "id": 3
+        },
+        "input:0": {
+          "id": 0,
+          "state": null
+        },
+        "input:1": {
+          "id": 1,
+          "state": false
+        },
+        "input:2": {
+          "id": 2,
+          "state": false
+        },
+        "input:3": {
+          "id": 3,
+          "state": false
+        },
+        "knx": {},
+        "mqtt": {
+          "connected": true
+        },
+        "switch:0": {
+          "id": 0,
+          "source": "init",
+          "tag": null,
+          "output": false,
+          "apower": 0.0,
+          "voltage": 234.7,
+          "freq": 50.0,
+          "current": 0.0,
+          "pf": 0.0,
+          "aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "ret_aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "counts": {
+            "on_time": 0,
+            "on_time_rst_ts": 0,
+            "switch_on": 0,
+            "switch_on_rst_ts": 0,
+            "on_above_thr": 0,
+            "on_above_thr_rst_ts": 0
+          },
+          "temperature": {
+            "tC": 34.3,
+            "tF": 93.7
+          }
+        },
+        "switch:1": {
+          "id": 1,
+          "source": "init",
+          "tag": null,
+          "output": false,
+          "apower": 0.0,
+          "voltage": 234.6,
+          "freq": 50.0,
+          "current": 0.0,
+          "pf": 0.0,
+          "aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "ret_aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "counts": {
+            "on_time": 0,
+            "on_time_rst_ts": 0,
+            "switch_on": 0,
+            "switch_on_rst_ts": 0,
+            "on_above_thr": 0,
+            "on_above_thr_rst_ts": 0
+          },
+          "temperature": {
+            "tC": 34.3,
+            "tF": 93.7
+          }
+        },
+        "switch:2": {
+          "id": 2,
+          "source": "init",
+          "tag": null,
+          "output": false,
+          "apower": 0.0,
+          "voltage": 234.6,
+          "freq": 50.0,
+          "current": 0.0,
+          "pf": 0.0,
+          "aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "ret_aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "counts": {
+            "on_time": 0,
+            "on_time_rst_ts": 0,
+            "switch_on": 0,
+            "switch_on_rst_ts": 0,
+            "on_above_thr": 0,
+            "on_above_thr_rst_ts": 0
+          },
+          "temperature": {
+            "tC": 34.3,
+            "tF": 93.7
+          }
+        },
+        "switch:3": {
+          "id": 3,
+          "source": "init",
+          "tag": null,
+          "output": false,
+          "apower": 0.0,
+          "voltage": 234.6,
+          "freq": 50.0,
+          "current": 0.0,
+          "pf": 0.0,
+          "aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "ret_aenergy": {
+            "total": 0.0,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "counts": {
+            "on_time": 0,
+            "on_time_rst_ts": 0,
+            "switch_on": 0,
+            "switch_on_rst_ts": 0,
+            "on_above_thr": 0,
+            "on_above_thr_rst_ts": 0
+          },
+          "temperature": {
+            "tC": 34.3,
+            "tF": 93.7
+          }
+        },
+        "sys": {
+          "mac": "020000000004",
+          "restart_required": false,
+          "time": "13:32",
+          "unixtime": 1793709139,
+          "last_sync_ts": 1793707940,
+          "uptime": 60232,
+          "ram_size": 262048,
+          "ram_free": 76824,
+          "ram_min_free": 34372,
+          "fs_size": 917504,
+          "fs_free": 413696,
+          "cfg_rev": 40,
+          "kvs_rev": 0,
+          "schedule_rev": 3,
+          "webhook_rev": 0,
+          "btrelay_rev": 0,
+          "bthc_rev": 0,
+          "available_updates": {
+            "stable": {
+              "version": "2.1.1"
+            }
+          },
+          "reset_reason": 3,
+          "backup": {},
+          "default_config": {
+            "exists": false
+          },
+          "utc_offset": 0
+        },
+        "ui": {},
+        "wifi": {
+          "sta_ip": "192.0.2.13",
+          "status": "got ip",
+          "ssid": "Fixture SSID 2",
+          "channel": 1,
+          "rssi": -69,
+          "bssid": "02:00:00:01:00:02",
+          "sta_ip6": [
+            "2001:db8::8",
+            "2001:db8::9",
+            "2001:db8::10",
+            "2001:db8::11",
+            "2001:db8::12"
+          ]
+        },
+        "ws": {
+          "connected": false
+        }
+      }
+    },
+    {
+      "method": "Sys.GetConfig",
+      "params": {},
+      "result": {
+        "device": {
+          "name": "Fixture name 1",
+          "mac": "020000000004",
+          "fw_id": "20261026-125845/2.2.0-beta2-gb8c68b1",
+          "discoverable": true,
+          "eco_mode": false,
+          "tls_check_cert_validity_time": true,
+          "enhanced_security": false
+        },
+        "location": {
+          "tz": "Etc/UTC",
+          "lat": 0.0,
+          "lon": 0.0
+        },
+        "debug": {
+          "level": 2,
+          "file_level": null,
+          "mqtt": {
+            "enable": false
+          },
+          "websocket": {
+            "enable": false
+          },
+          "file_log": {
+            "enable": false
+          },
+          "udp": {
+            "addr": null
+          }
+        },
+        "ui_data": {
+          "device_revision": "1-39"
+        },
+        "rpc_udp": {
+          "dst_addr": null,
+          "listen_port": null
+        },
+        "sntp": {
+          "server": "fixture.example.invalid"
+        },
+        "cfg_rev": 40
+      }
+    },
+    {
+      "method": "Input.GetConfig",
+      "params": {
+        "id": 0
+      },
+      "result": {
+        "id": 0,
+        "name": null,
+        "type": "button",
+        "enable": true,
+        "invert": false
+      }
+    },
+    {
+      "method": "Input.GetConfig",
+      "params": {
+        "id": 1
+      },
+      "result": {
+        "id": 1,
+        "name": null,
+        "type": "switch",
+        "enable": true,
+        "invert": false
+      }
+    },
+    {
+      "method": "Input.GetConfig",
+      "params": {
+        "id": 2
+      },
+      "result": {
+        "id": 2,
+        "name": null,
+        "type": "switch",
+        "enable": true,
+        "invert": false
+      }
+    },
+    {
+      "method": "Input.GetConfig",
+      "params": {
+        "id": 3
+      },
+      "result": {
+        "id": 3,
+        "name": null,
+        "type": "switch",
+        "enable": true,
+        "invert": false
+      }
+    }
+  ]
+}

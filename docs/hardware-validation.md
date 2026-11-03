@@ -1,31 +1,54 @@
 # Hardware validation
 
-## Current status — 0.2.1 beta preparation, 2 November 2026
+## Current status — 0.2.2 beta preparation, 3 November 2026
 
-The beta has not been installed or enabled in the owner's live Indigo server by
-this development session. No physical output or hardware setting was changed.
-Historical observations below apply to the versions recorded there, not automatically
-to the beta. The owner subsequently reported successful startup input behavior in
-the seeded chat; the exact installed version and complete retest conditions were
-not recorded. That confirmation is retained as user evidence rather than promoted
-to a repeatable beta validation result.
+The revised 0.2.2 worker was exercised in an isolated process against owner-selected
+hardware. The installed Indigo plugin remained **0.2.1**, on Indigo 2026.1/API 3.9;
+this session did not install, enable or restart a replacement plugin. The owner
+explicitly authorized these output tests. Existing Indigo IDs/bindings were checked
+through Indigo's local scripting interface. The MCP connector returned HTTP 429
+and its troubleshooting was deferred at the owner's request.
 
-| Area | Existing evidence | Beta validation still required |
+| Area | Evidence for this change | Remaining validation |
 | --- | --- | --- |
-| Gen3/Gen4 discovery, creation, local names | Owner logs and earlier read-only probes | Recheck discovery, explicit creation and names after upgrade |
-| Gen4 input press/release and startup position | Owner reported working behavior; earlier RPC/Modbus reads | Repeat held/released restart checks on the installed beta |
-| Native Button Pressed trigger | Owner reported trigger-based toggling; simulator verifies native event adapter | Check beta native event, conditions, single press and clock/network recovery |
-| Gen3 dimmer and existing Gen2 Pro dimmer | Earlier read-only state/metering translation | Physical On/Off/Toggle, relative steps, external changes and meter comparison |
-| Per-device passwords | Strict authenticated simulator; Save/Cancel, blank/clear and offline-device configuration regressions | Masked fields in all three native dialogs, persistence and protected-device operation |
-| Communication checkbox | Owner reported an offline disabled device still warning on 0.2.0; reproduced and covered with shared-worker and real loopback stop/resume tests | Disable last channel, confirm retries stop; re-enable; confirm enabled siblings retain communication |
-| Native dialogs | XML contract validation and host double | Open each device type, confirm read-only details, refresh and save; password menu |
-| DHCP/address reuse and communication failure | Deterministic registry and real loopback transport tests | Router/network interruption and reconnect with actual units |
-| Release installation | Isolated source/archive loader checks and portable dependency integrity | Install archive in Indigo and confirm existing names, IDs and bindings remain |
+| Gen4 input startup and press/release | Released startup sample known Off; real btn_down/btn_up gave On/Off in revised worker/model; actual installed Indigo input also On for the physical hold and Off on release | Held-across-startup with this asynchronous version; archive upgrade |
+| Selected Pro relay | On, Off, Toggle and change from a separate RPC connection; starting Off restored and verified | Physical load/reference measurement; network interruption |
+| Selected Pro dimmer | 20%, brighten +10 to 30%, dim -5 to 25%, Off/On/Toggle; external change; starting Off with retained 100% restored and verified | Gen3 physical dimmer controls; reference meter comparison |
+| Firmware response compatibility | Sanitized Gen4 Mini, Gen3 Dimmer, Gen2 Pro Dimmer and Pro 4PM captures replayed through production protocol/worker/inventory/adapter | Additional models/firmware as hardware becomes available |
+| Native Button Pressed trigger | Retained simulator/adapter tests and earlier owner evidence; this test sent no synthetic button events | Conditions and event execution with the installed 0.2.2 archive |
+| Passwords/communication-off | Save/Cancel, authentication and shared-worker stop/resume regressions retained | Protected hardware and native dialog/checkbox checks after upgrade |
+| Dialogs and release installation | XML callback, strict host and isolated source/archive loader checks | Open native dialogs after upgrading; verify retained IDs/names/bindings |
+| DHCP/network recovery | Generation, identity, disconnect and address-swap tests | Real router/network interruption |
 
-For each beta check, record installed version, Indigo version, device model and
-firmware, starting state, action, observed state and relevant log. Physical control
-checks should be performed on suitable test outputs under the owner's control.
-The beta label does not imply these unperformed checks have passed.
+### Physical control evidence
+
+- Relay: owner-selected Pro 4PM, model SPSW-104PE16EU,
+  firmware **2.2.0-beta2**, channel switch:0. Initial/final output Off. Five
+  worker command observations completed in approximately **0.068–0.089 s**;
+  a separate connection's Off change was observed in **0.137 s**.
+- Dimmer: owner-selected Pro Dimmer (replacement test target), model SPDM-001PE01EU, firmware **2.0.3**, light:0.
+  Initial/final output Off, retained brightness 100. Absolute and relative steps
+  produced 20 → 30 → 25, with On/Off/Toggle state confirmations in approximately
+  **0.044–0.636 s**. An external Off was observed in **0.429 s**.
+- Input: owner-selected 1PM Mini Gen4,
+  model S4SW-001P8EU, firmware **2.1.1**, input:0. Its relay was not operated or
+  represented by a new Indigo device. Two owner-operated holds were observed in
+  the installed Indigo input; after isolating RPC source IDs, the revised worker
+  received real live btn_down/btn_up and reported On then Off. The startup Modbus
+  read established known Off without waiting for the first press.
+
+These timings are observations on this LAN, from queue admission to a received
+matching status; they are not performance guarantees. Metering fields were present
+and translated, but the relay had zero reported load and no calibrated reference
+meter was used. This does **not** establish metering accuracy or visual/physical
+lamp brightness. Hardware tests of worker networking and the installed 0.2.1 input
+are distinct from end-to-end installation testing of the 0.2.2 native adapter.
+
+The initial parallel diagnostic used a shared RPC source and failed to receive an
+external notification before its deadline. Starting states were restored even on
+that failure. Unique per-session source IDs resolved concurrent notification delivery
+on the repeat; an independent session now cannot share the plugin's routing identity.
+No firmware, input mode, relay behavior or other device configuration was changed.
 
 ## Historical validation records
 

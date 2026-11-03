@@ -38,3 +38,14 @@
   physical identity, and must not persist plaintext in device properties. Blank
   keeps the saved credential; explicit No password clears it. Password saves must
   not enable disabled communications.
+
+- Credential-at-rest work is explicitly deferred by the owner (3 November 2026).
+  Preserve the documented preferences storage and legacy fallback in this scope;
+  do not add encryption, Keychain integration or a credential migration.
+- Give every RPC session a distinct source ID. A shared source can redirect
+  notifications when a diagnostic session or another Indigo server connects.
+- Optional Modbus samples run outside the RPC command thread. Apply results only
+  in the owning worker, fenced by connection/configuration and input-event versions.
+- Hardware validation uses only outputs explicitly identified by the owner. Restore
+  starting output/retained brightness states and record what was actually tested.
+  Building or publishing does not install or restart the live Indigo plugin.

@@ -39,7 +39,11 @@ provisioned onto the LAN.
 
 | Module | Responsibility |
 | --- | --- |
-| `plugin.py` | Indigo lifecycle, callbacks, channel publication, explicit creation, UI and trigger adapter |
+| `plugin.py` | Indigo lifecycle, thin native callbacks, channel publication and explicit creation |
+| `bindings.py` | Pure physical/channel binding and display helpers |
+| `catalog.py` | Locked discovery/channel catalog, lifecycle updates and detached dialog snapshots |
+| `dialogs.py` | Selection, duplicate validation and staged password UI, through injected host interfaces |
+| `buttons.py` | Locked native button subscriptions, validation and condition-aware dispatch |
 | `connections.py` | Worker slots, physical ownership, endpoint generations and last discovery time |
 | `worker.py` | One interruptible RPC session per endpoint, ordered reads/actions, heartbeat/configuration refresh |
 | `rpc.py` | Frame validation, correlated replies, call deadlines, scoped digest challenges and nonce reuse |
@@ -48,7 +52,8 @@ provisioned onto the LAN.
 | `credentials.py` | Thread-safe per-identity credentials and restricted legacy fallback |
 | `diagnostics.py` | Component summaries and unsupported-channel warning deduplication |
 | `discovery.py` | Continuous `_shelly._tcp.local.` resolution |
-| `modbus.py` | Optional bounded, read-only Gen4 physical-input sample with MAC consistency check |
+| `modbus.py` | Read-only Gen4 physical-input wire reads with deadline and MAC consistency check |
+| `sampling.py` | One optional background sample per worker, bounded result mailbox and wakeup |
 
 The thread-per-endpoint model is appropriate for the expected home installation.
 It keeps each unit's actions serialized without making an asynchronous framework
@@ -56,6 +61,10 @@ part of the plugin's public design. Short-lived public probes may coexist during
 address migration; they do not create Indigo devices.
 
 ## Identity and lifecycle
+
+Each RPC session uses its own random source ID, stable within that session.
+Sharing a source across concurrent connections can redirect firmware notifications;
+independent sources let diagnostics and other Indigo instances coexist.
 
 A worker reads public `Shelly.GetDeviceInfo` without credentials before protected
 calls. An identity mismatch terminates that worker and schedules a fresh public
@@ -106,21 +115,28 @@ states so a lost callback cannot leave an enabled device permanently paused.
 ## Ordered reconciliation
 
 `Session` dispatches frames in receive order. While a complete read is being
-enriched with configuration or a Modbus sample, the worker buffers notifications
+enriched with configuration, the worker buffers notifications
 and records the position of the `Shelly.GetStatus` reply in that buffer.
 
 For a live read, buffered notifications before the reply are published first,
-then the complete snapshot, then notifications after the reply. A later physical
-sample is applied last, while live button events still reach triggers. Startup
+then the complete snapshot, then notifications after the reply. Startup
 publishes an initial ready snapshot, drops superseded earlier status deltas and
-replays button events with trigger execution suppressed. A later startup sample
-supersedes buffered button position.
+replays button events with trigger execution suppressed. Optional Modbus reads run
+on a separate sampling thread. The owning RPC worker alone applies their results,
+after checking connection epoch, configuration change count/cached settings and
+per-input event version. Events received after submission invalidate the affected
+sample; reconnects or configuration reads invalidate the whole task. Samples establish
+position without firing native triggers. A failed sample never fabricates OFF.
+Only one task/result slot exists per worker, and shutdown fences late completions.
+The underlying read has a total network deadline; hostname resolution still depends
+on the system resolver, but neither holds up RPC commands.
 
 Full snapshots replace raw component data and remove absent channels; deltas merge
 without resetting omitted fields. Input configuration is cached separately in the
 worker and carried as explicit annotations into the model. All inputs, including
-binary inputs, refresh configuration. Configuration revision changes accelerate
-refresh. A boolean input report is positive evidence of an enabled switch input.
+binary inputs, are configured on initial connection and configuration refresh.
+Revision changes, configuration events and newly seen input components request a
+refresh; a change received during that read remains dirty for another read. A boolean input report is positive evidence of an enabled switch input.
 
 UTC timestamps are not ordering tokens. A bounded event fingerprint history filters
 exact retransmissions within a clock epoch; backwards clock steps reset that history.
@@ -137,8 +153,11 @@ component status read, including on firmware that omits notifications. Configura
 and Modbus work are not part of that ordinary command path.
 
 Requested full status reads coalesce per physical device. A lightweight status read
-runs every fifteen seconds; configuration and optional samples refresh every sixty
-seconds or after observed revision changes. Each RPC has an eight-second total
+runs every fifteen seconds. Configuration with a known revision has a fifteen-minute
+fallback; missing revisions or optional read failures use sixty seconds. Optional
+button sampling has its own sixty-second cadence, independent of configuration.
+Configuration reads remain serialized RPC work, so they can still delay commands;
+optional Modbus reads no longer do. Each RPC has an eight-second total
 response deadline, including an authentication retry. These are scheduled intervals,
 not a hard global latency guarantee while other RPC work is in progress.
 
@@ -168,7 +187,9 @@ These checks prevent accidental credential use with unrelated discoveries; they
 are not cryptographic server authentication. Device IDs, realms and Modbus MACs
 can be imitated on a hostile LAN. Plain WebSocket traffic is not encrypted and
 passwords in Indigo preferences are not encrypted by this plugin. Trusted-LAN
-operation is the current security boundary.
+operation is the current security boundary. The owner explicitly deferred credential
+storage/encryption changes on 3 November 2026; this release preserves storage and
+legacy fallback behavior.
 
 ## Verification and remaining work
 
@@ -185,9 +206,27 @@ documented XML attributes/callbacks, dependency versions and content hashes. Rel
 gates require a clean pushed commit, successful CI, fresh build and manifest.
 
 The host double cannot establish native Indigo dialog rendering or all IOM cache
-semantics. Physical control, external-change notifications, metering and actual
-network interruption behavior require the hardware matrix. Broader components and
+semantics. Four sanitized real firmware result sets are replayed through Session, Worker,
+inventory and the strict Indigo adapter. Their generated transport envelopes are
+explicitly distinguished from recorded HTTP result bodies. Physical controls and
+external changes passed on the selected Pro outputs, with live Gen4 button events
+and startup sampling; metering accuracy and actual network interruption remain in
+the hardware matrix. Broader components and
 performance tuning should follow that evidence. See [hardware validation](hardware-validation.md).
+
+## Focused suite review — 3 November 2026
+
+The revision cache, asynchronous sampler and service extraction prompted this review;
+advance scope notice was given to the owner. Existing schema, state ordering,
+credentials, communication-off, trigger and lifecycle regressions remain relevant
+and were retained. Synchronous-sample tests now wait for asynchronous completion and
+still verify both physical positions, unknown-on-failure and startup ordering.
+New coverage protects revision-triggered/fallback reads, events during configuration,
+optional-read retry without a hot loop, commands during a deliberately blocked
+sample, stale-result fences and source isolation. Captured firmware payloads protect
+actual component/null/name shapes. Release/capture boundary tests cover successive
+beta tags and privacy/allowlist behavior. No tests were removed solely for age or
+passing consistently; the complete local suite remains a few seconds.
 
 ## API references
 

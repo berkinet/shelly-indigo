@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.1 beta
+# Shelly for Indigo — 0.2.2 beta
 
 Shelly for Indigo follows a simple design philosophy: small, lightweight software
 built to meet a well-defined need. It provides direct, local communication between
@@ -95,8 +95,10 @@ so successive increments accumulate. Brightness displays 0% while off without
 changing the Shelly's retained turn-on level.
 
 A lightweight status read runs every 15 seconds for reconciliation and detection
-of silent connections. Configuration is refreshed every 60 seconds and when a
-configuration-revision change is observed. A failed idle connection is normally
+of silent connections. Configuration is refreshed when its revision changes, on
+configuration-change events, or when new input components appear. A fifteen-minute
+fallback handles missed signals; firmware without revisions and failed optional
+configuration reads use a sixty-second fallback. A failed idle connection is normally
 detected within the heartbeat interval plus the eight-second RPC timeout; operating
 system connection errors can detect it sooner. This is not a hard bound while a
 configuration read or another RPC is already in progress.
@@ -115,7 +117,9 @@ hardware relay behavior unchanged.
 
 Button-mode RPC status is normally null. For a Gen4 non-inverted button with
 Modbus already enabled, an identity-checked, read-only sample can establish its
-position at startup and during configuration reconciliation. The plugin never
+position shortly after startup and every sixty seconds. Sampling runs separately
+from command processing; a late sample cannot replace a newer received button event
+or survive a configuration/connection change. The plugin never
 enables Modbus. Other cases use live press/release events; a missing sample stays
 **Unknown**, not an assumed OFF or a disabled/error device. `stateKnown` indicates
 whether the retained raw `onOffState` is currently meaningful.
@@ -165,9 +169,11 @@ This beta includes offline behavioral regressions, a strict real WebSocket
 simulator, the actual plugin event loop with an Indigo contract double, authenticated
 exchanges, Ubuntu/macOS CI and source/archive loader checks. It has not been installed
 or enabled in the owner's live Indigo server as part of this release work.
-Native dialogs and physical output control still need the focused checks in
-[hardware validation](docs/hardware-validation.md). Simulations do not establish
-physical switching or metering accuracy.
+The revised worker passed physical relay/dimmer control and external-change checks
+on owner-selected outputs, and Gen4 press/release checks alongside the installed
+0.2.1 plugin. Four sanitized firmware captures feed regression tests. Native dialogs,
+installation of this beta, metering accuracy and network interruption still need
+the focused checks in [hardware validation](docs/hardware-validation.md).
 
 ```zsh
 python3.13 -m unittest discover -s tests
@@ -184,12 +190,14 @@ runtime archives; isolated source-build tooling is not a fully reproducible buil
 or a vendored-library security audit.
 
 For a release, commit and push the intended source, wait for the complete CI
-workflow, then run `python3.13 tools/release.py --publish`. It reruns the checks,
-builds a fresh archive and publishes a beta prerelease with a source-commit and
-SHA-256 manifest. Existing release assets are not overwritten.
+workflow, then run `python3.13 tools/release.py --tag v0.2.2-beta.1 --publish`.
+Use a new tag such as `v0.2.2-beta.2` for another beta of the same plugin version;
+`--notes-file` and `--title` can override defaults. A tag without a prerelease suffix
+creates a stable release. The tool reruns checks and builds a fresh archive with a
+source-commit and SHA-256 manifest. Existing releases/assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.1-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.2-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 

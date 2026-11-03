@@ -1,0 +1,209 @@
+{
+  "provenance": {
+    "kind": "recorded-device",
+    "transport": "read-only HTTP RPC GET",
+    "capture_date": "2026-11-03",
+    "gen": 3,
+    "model": "S3DM-0A101WWL",
+    "firmware": "2.0.3",
+    "firmware_id": "20261026-122230/2.0.3-g4601943",
+    "redactions": [
+      "synthetic identity/MAC and network addresses",
+      "device names, SSIDs, location and credentials sanitized",
+      "keys, nulls and nonsensitive values retained"
+    ]
+  },
+  "responses": [
+    {
+      "method": "Shelly.GetDeviceInfo",
+      "params": {},
+      "result": {
+        "name": "Fixture name 1",
+        "id": "shellydimmerg3-020000000002",
+        "mac": "020000000002",
+        "slot": 1,
+        "model": "S3DM-0A101WWL",
+        "gen": 3,
+        "fw_id": "20261026-122230/2.0.3-g4601943",
+        "ver": "2.0.3",
+        "app": "DimmerG3",
+        "auth_en": false,
+        "auth_domain": null,
+        "matter": false,
+        "provision": "complete",
+        "enhanced_security": false
+      }
+    },
+    {
+      "method": "Shelly.GetStatus",
+      "params": {},
+      "result": {
+        "ble": {
+          "addr": "02:00:00:01:00:01,p"
+        },
+        "bthome": {},
+        "cloud": {
+          "connected": true
+        },
+        "input:0": {
+          "id": 0,
+          "state": null
+        },
+        "input:1": {
+          "id": 1,
+          "state": null
+        },
+        "knx": {},
+        "light:0": {
+          "id": 0,
+          "source": "WS_in",
+          "tag": null,
+          "output": false,
+          "brightness": 25,
+          "temperature": {
+            "tC": 41.5,
+            "tF": 106.8
+          },
+          "aenergy": {
+            "total": 1854.038,
+            "by_minute": [
+              0.0,
+              0.0,
+              0.0
+            ],
+            "minute_ts": 1793709120
+          },
+          "apower": 0.0,
+          "current": 0.0,
+          "voltage": 234.0
+        },
+        "matter": {
+          "num_fabrics": 0,
+          "commissionable": false
+        },
+        "mqtt": {
+          "connected": false
+        },
+        "sys": {
+          "mac": "020000000002",
+          "restart_required": false,
+          "time": "13:32",
+          "unixtime": 1793709139,
+          "last_sync_ts": 1793707537,
+          "uptime": 168347,
+          "ram_size": 274036,
+          "ram_free": 132968,
+          "ram_min_free": 104948,
+          "fs_size": 917504,
+          "fs_free": 397312,
+          "cfg_rev": 26,
+          "kvs_rev": 0,
+          "schedule_rev": 1,
+          "webhook_rev": 0,
+          "btrelay_rev": 0,
+          "bthc_rev": 0,
+          "available_updates": {
+            "beta": {
+              "version": "2.2.0-beta2"
+            }
+          },
+          "reset_reason": 1,
+          "utc_offset": 0
+        },
+        "wifi": {
+          "sta_ip": "192.0.2.11",
+          "status": "got ip",
+          "ssid": "Fixture SSID 2",
+          "channel": 1,
+          "rssi": -54,
+          "bssid": "02:00:00:01:00:02",
+          "sta_ip6": [
+            "2001:db8::2",
+            "2001:db8::3",
+            "2001:db8::4",
+            "2001:db8::5",
+            "2001:db8::6"
+          ]
+        },
+        "ws": {
+          "connected": false
+        }
+      }
+    },
+    {
+      "method": "Sys.GetConfig",
+      "params": {},
+      "result": {
+        "device": {
+          "name": "Fixture name 1",
+          "mac": "020000000002",
+          "fw_id": "20261026-122230/2.0.3-g4601943",
+          "discoverable": true,
+          "eco_mode": false,
+          "tls_check_cert_validity_time": true,
+          "enhanced_security": false
+        },
+        "location": {
+          "tz": "Etc/UTC",
+          "lat": 0.0,
+          "lon": 0.0
+        },
+        "debug": {
+          "level": 2,
+          "file_level": null,
+          "mqtt": {
+            "enable": false
+          },
+          "websocket": {
+            "enable": false
+          },
+          "file_log": {
+            "enable": false
+          },
+          "udp": {
+            "addr": null
+          }
+        },
+        "ui_data": {
+          "device_revision": "1-26"
+        },
+        "rpc_udp": {
+          "dst_addr": null,
+          "listen_port": null
+        },
+        "sntp": {
+          "server": "fixture.example.invalid"
+        },
+        "cfg_rev": 26
+      }
+    },
+    {
+      "method": "Input.GetConfig",
+      "params": {
+        "id": 0
+      },
+      "result": {
+        "id": 0,
+        "name": null,
+        "type": "button",
+        "enable": true,
+        "invert": false,
+        "factory_reset": true
+      }
+    },
+    {
+      "method": "Input.GetConfig",
+      "params": {
+        "id": 1
+      },
+      "result": {
+        "id": 1,
+        "name": null,
+        "type": "button",
+        "enable": true,
+        "invert": false,
+        "factory_reset": true
+      }
+    }
+  ]
+}

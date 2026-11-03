@@ -61,7 +61,7 @@ class Base:
         self.logger = logging.getLogger('bundle-test')
         self.indigo_log_handler = logging.NullHandler()
         self.plugin_file_handler = logging.NullHandler()
-sys.modules['indigo'] = types.SimpleNamespace(PluginBase=Base)
+sys.modules['indigo'] = types.SimpleNamespace(PluginBase=Base, Dict=dict, trigger=types.SimpleNamespace(execute=lambda *a, **kw: None))
 namespace = {'__name__': 'indigo_plugin_exec'}
 source = (server_plugin / 'plugin.py').read_text()
 exec(compile(source, 'plugin.py', 'exec'), namespace)

@@ -9,6 +9,7 @@ import threading
 import time
 from urllib.parse import urlsplit
 from .modbus import read_button_inputs
+from .sampling import Sampler
 from .rpc import AuthenticationError, ProtocolError, RpcError, Session
 
 
@@ -17,7 +18,6 @@ class Snapshot:
     status: dict
     before: list
     after: list
-    samples: dict
 
 
 class IdentityChanged(RpcError):
@@ -28,7 +28,8 @@ class IdentityChanged(RpcError):
 
 class Worker(threading.Thread):
     def __init__(self, address, emit, password="", expected_id=None, connector=None,
-                 poll_interval=15, config_interval=60, rpc_timeout=8, exclude_id=None, permitted=None, permitted_command=None):
+                 poll_interval=15, config_interval=900, rpc_timeout=8, exclude_id=None, permitted=None, permitted_command=None,
+                 sample_interval=60, sample_reader=None):
         super().__init__(name=f"Shelly-{address}", daemon=True)
         self.address, self.emit, self.password = address, emit, password
         self.expected_id, self.connector = expected_id, connector
@@ -43,9 +44,17 @@ class Worker(threading.Thread):
         self.pending_notifications = []
         self.device_info = None
         self.input_configs = {}
+        self.configured_inputs = set()
         self.modbus_enabled = False
         self.config_dirty = True
         self.config_revision = None
+        self.config_changes = 0
+        self.next_config = 0
+        self.sample_interval = sample_interval
+        self.next_sample = 0
+        self.sample_epoch = 0
+        self.input_versions = {}
+        self.sampler = Sampler(sample_reader or read_button_inputs, self._wake)
         self.reading = False
         self._wake_reader = self._wake_writer = None
         self._refresh_pending = False
@@ -72,6 +81,7 @@ class Worker(threading.Thread):
 
     def stop(self):
         self.stopped.set()
+        self.sampler.stop()
         self._wake()
         if self.socket is not None:
             try:
@@ -94,12 +104,9 @@ class Worker(threading.Thread):
                 values.update(_inputType="switch", _enabled=True)
         return status
 
-    def _emit_notification(self, method, params, initial=False, sampled=()):
+    def _emit_notification(self, method, params, initial=False):
         if method == "NotifyEvent":
             events = params.get("events", [])
-            if initial:
-                events = [event for event in events if not isinstance(event, dict)
-                          or event.get("component") not in sampled]
             if events:
                 payload = {**params, "events": events}
                 if initial:
@@ -112,13 +119,21 @@ class Worker(threading.Thread):
     def _notify(self, method, params):
         if method not in ("NotifyStatus", "NotifyFullStatus", "NotifyEvent"):
             return
-        revision = params.get("sys", {}).get("cfg_rev") if isinstance(params.get("sys"), dict) else None
-        if revision is not None and revision != self.config_revision:
-            self.config_revision = revision
-            self.config_dirty = True
-        if method == "NotifyEvent" and any(isinstance(event, dict) and event.get("event") == "config_changed"
-                                            for event in params.get("events", [])):
-            self.config_dirty = True
+        self._observe_revision(params)
+        if method == "NotifyEvent":
+            for event in params.get("events", []):
+                if not isinstance(event, dict):
+                    continue
+                if event.get("event") == "config_changed":
+                    self._config_changed()
+                if event.get("event") in ("btn_down", "btn_up"):
+                    key = event.get("component")
+                    if isinstance(key, str) and key in self.configured_inputs:
+                        self.input_versions[key] = self.input_versions.get(key, 0) + 1
+        else:
+            for key, value in params.items():
+                if key in self.configured_inputs and isinstance(value, dict) and isinstance(value.get("state"), bool):
+                    self.input_versions[key] = self.input_versions.get(key, 0) + 1
         if not self.online or self.reading:
             if len(self.pending_notifications) >= 256:
                 raise ProtocolError("Notification buffer overflow during reconciliation")
@@ -132,29 +147,37 @@ class Worker(threading.Thread):
             raise ProtocolError(f"{method} returned an invalid object")
         return result
 
+    def _config_changed(self):
+        self.config_changes += 1
+        self.config_dirty = True
+
+    def _observe_revision(self, status):
+        revision = status.get("sys", {}).get("cfg_rev") if isinstance(status.get("sys"), dict) else None
+        if revision is not None and revision != self.config_revision:
+            self.config_revision = revision
+            self._config_changed()
+
     def _read_status(self, session, refresh_config=True):
-        """Capture the RPC reply boundary before any slower configuration or Modbus reads."""
+        """Keep the reply boundary separate from subsequent configuration reads."""
         self.reading = True
-        if refresh_config:
-            self.config_dirty = False
         try:
             status = self._object(session.call("Shelly.GetStatus"), "Shelly.GetStatus")
             boundary = len(self.pending_notifications)
-            revision = status.get("sys", {}).get("cfg_rev") if isinstance(status.get("sys"), dict) else None
-            if revision is not None and revision != self.config_revision:
-                self.config_revision = revision
-                self.config_dirty = True
-            if refresh_config:
-                self.config_dirty = False
+            self._observe_revision(status)
             keys = [key for key, value in status.items() if re.fullmatch(r"input:\d+", key)
                     and isinstance(value, dict)]
+            refresh_config = refresh_config or self.config_dirty or set(keys) != self.configured_inputs
             if refresh_config:
+                self.sample_epoch += 1
+                self.configured_inputs = set(keys)
+                changes = self.config_changes
+                failed = False
                 try:
                     config = self._object(session.call("Sys.GetConfig"), "Sys.GetConfig")
                 except AuthenticationError:
                     raise
                 except RpcError:
-                    pass  # A missing optional friendly name must not disable control.
+                    failed = True
                 else:
                     device = config.get("device", {})
                     name = device.get("name") if isinstance(device, dict) else None
@@ -171,65 +194,76 @@ class Worker(threading.Thread):
                     except AuthenticationError:
                         raise
                     except RpcError:
+                        failed = True
                         continue
                     self.input_configs[key] = config
                 info = self.device_info or {}
-                if keys and info.get("gen") == 4 and info.get("mac"):
+                self.modbus_enabled = False
+                if (info.get("gen") == 4 and info.get("mac")
+                        and any(config.get("type") == "button" for config in self.input_configs.values())):
                     try:
                         self.modbus_enabled = bool(self._object(session.call("Modbus.GetConfig"),
                                                                "Modbus.GetConfig").get("enable", False))
                     except AuthenticationError:
                         raise
                     except RpcError:
-                        self.modbus_enabled = False
+                        failed = True
+                self.config_dirty = self.config_changes != changes
+                interval = min(60, self.config_interval) if failed or self.config_revision is None else self.config_interval
+                self.next_config = time.monotonic() + interval
+                self.next_sample = 0
             status = self._enrich(status)
-            samples = {}
-            info = self.device_info or {}
-            target = urlsplit("//" + self.address)
-            readable = [int(key.split(":")[1]) for key in keys
-                        if self.input_configs.get(key, {}).get("type") == "button"
-                        and self.input_configs[key].get("enable", True)
-                        and not self.input_configs[key].get("invert", False)]
-            if (refresh_config and readable and self.modbus_enabled and info.get("gen") == 4
-                    and info.get("mac") and target.port == 80):
-                try:
-                    samples = {f"input:{index}": {"_buttonState": state} for index, state in
-                               read_button_inputs(target.hostname, info["mac"], readable).items()}
-                except (OSError, ValueError):
-                    pass  # Optional failures never fabricate OFF.
             pending, self.pending_notifications = self.pending_notifications, []
-            return Snapshot(status, pending[:boundary], pending[boundary:], samples)
+            return Snapshot(status, pending[:boundary], pending[boundary:])
         finally:
             self.reading = False
 
     def _reconcile(self, session, initial=False, refresh_config=False):
         snapshot = self._read_status(session, refresh_config)
         if initial:
-            status = deepcopy(snapshot.status)
-            for key, sample in snapshot.samples.items():
-                status[key].update(sample)
             with self.command_lock:
                 self.online = True
-            self.emit("ready", self.address, (dict(self.device_info), status))
-            # Earlier status deltas are superseded by the full reply. Events carry
-            # button position, which RPC cannot supply; sampled inputs supersede those too.
+            self.emit("ready", self.address, (dict(self.device_info), snapshot.status))
+            # Earlier status deltas are superseded by the reply; startup events
+            # establish position without firing Button Pressed automation.
             for method, params in snapshot.before:
                 if method == "NotifyEvent":
-                    self._emit_notification(method, params, True, snapshot.samples)
+                    self._emit_notification(method, params, True)
             for method, params in snapshot.after:
-                self._emit_notification(method, params, True, snapshot.samples)
-            # A later physical sample also supersedes any buffered input status annotation.
-            if snapshot.samples and any(method != "NotifyEvent" and any(key in params for key in snapshot.samples)
-                                        for method, params in snapshot.after):
-                self.emit("status", self.address, snapshot.samples)
+                self._emit_notification(method, params, True)
         else:
             for method, params in snapshot.before:
                 self._emit_notification(method, params)
             self.emit("snapshot", self.address, snapshot.status)
             for method, params in snapshot.after:
                 self._emit_notification(method, params)
-            if snapshot.samples:
-                self.emit("status", self.address, snapshot.samples)
+
+    def _sample_buttons(self, now):
+        result = self.sampler.take()
+        if result is not None:
+            token, samples = result
+            epoch, changes, configs, versions = token
+            if (epoch == self.sample_epoch and changes == self.config_changes
+                    and configs == self.input_configs and not self.config_dirty and self.online
+                    and not self.stopped.is_set()):
+                accepted = {f"input:{index}": {"_buttonState": state} for index, state in samples.items()
+                            if isinstance(state, bool) and f"input:{index}" in versions
+                            and versions[f"input:{index}"] == self.input_versions.get(f"input:{index}", 0)}
+                if accepted:
+                    self.emit("status", self.address, accepted)
+        if now < self.next_sample or self.config_dirty or not self.online or self.stopped.is_set():
+            return
+        info = self.device_info or {}
+        target = urlsplit("//" + self.address)
+        readable = [int(key.split(":")[1]) for key, config in self.input_configs.items()
+                    if config.get("type") == "button" and config.get("enable", True) and not config.get("invert", False)]
+        if not (readable and self.modbus_enabled and info.get("gen") == 4 and info.get("mac") and target.port == 80):
+            self.next_sample = now + self.sample_interval
+            return
+        versions = {f"input:{index}": self.input_versions.get(f"input:{index}", 0) for index in readable}
+        token = (self.sample_epoch, self.config_changes, deepcopy(self.input_configs), versions)
+        if self.sampler.submit(token, target.hostname, info["mac"], readable):
+            self.next_sample = now + self.sample_interval
 
     def _component_status(self, session, namespace, index):
         method = f"{namespace}.GetStatus"
@@ -271,6 +305,7 @@ class Worker(threading.Thread):
             self.emit("status", self.address, self._enrich({f"{namespace.lower()}:{params['id']}": result}))
 
     def _discard_commands(self):
+        self.sample_epoch += 1
         with self.command_lock:
             self.online = False
             self._refresh_pending = False
@@ -315,12 +350,16 @@ class Worker(threading.Thread):
                     self.emit("identified", self.address, dict(info))
                     session.identity = identity
                     session.password = self.password(identity) if callable(self.password) else self.password
+                    self.sample_epoch += 1
+                    self.config_dirty = True
+                    self.config_revision = None
+                    self.input_versions.clear()
+                    self.configured_inputs.clear()
                     self.input_configs.clear()
                     self.modbus_enabled = False
                     self._reconcile(session, initial=True, refresh_config=True)
                     delay = 1
                     next_poll = time.monotonic() + self.poll_interval
-                    next_config = time.monotonic() + self.config_interval
                     while not self.stopped.is_set():
                         try:
                             method, params, context, admitted = self.commands.get_nowait()
@@ -344,14 +383,16 @@ class Worker(threading.Thread):
                                         self._refresh_pending = False
                                         self._last_refresh = time.monotonic()
                         now = time.monotonic()
-                        if self.config_dirty or now >= next_config:
+                        if self.config_dirty or now >= self.next_config:
                             self._reconcile(session, refresh_config=True)
-                            next_config = time.monotonic() + self.config_interval
                             next_poll = time.monotonic() + self.poll_interval
                         elif now >= next_poll:
                             self._reconcile(session)
                             next_poll = time.monotonic() + self.poll_interval
-                        timeout = 0 if not self.commands.empty() else min(next_poll, next_config) - time.monotonic()
+                        self._sample_buttons(time.monotonic())
+                        next_sample = math.inf if self.sampler.busy else self.next_sample
+                        timeout = (0 if not self.commands.empty() else
+                                   min(next_poll, self.next_config, next_sample) - time.monotonic())
                         if session.wait(self._wake_reader, timeout):
                             try:
                                 session.listen()
@@ -388,6 +429,7 @@ class Worker(threading.Thread):
                     break
                 delay = min(delay * 2, 60) if delay < 300 else 300
         finally:
+            self.sampler.stop()
             self._discard_commands()
             for wake in (self._wake_reader, self._wake_writer):
                 wake.close()

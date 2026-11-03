@@ -86,13 +86,16 @@ class WebsocketTests(unittest.TestCase):
         import websocket
         connector = lambda *a, **kw: websocket.create_connection(
             f'ws://127.0.0.1:{server.server_address[1]}/rpc', **kw)
-        worker = Worker('127.0.0.1:80', lambda *args: events.put(args), connector=connector)
+        worker = Worker('127.0.0.1:80', lambda *args: events.put(args), connector=connector,
+                        sample_reader=lambda *args: {0: False})
         with patch('shelly.worker.read_button_inputs', return_value={0: False}):
             try:
                 worker.start()
                 kind, _, payload = next_event(events, lambda event: event[0] != 'identified', timeout=5)
                 self.assertEqual(kind, 'ready', payload)
-                self.assertIs(payload[1]['input:0']['_buttonState'], False)
+                sample = next_event(events, lambda event: event[0] == 'status'
+                                    and '_buttonState' in event[2].get('input:0', {}))
+                self.assertIs(sample[2]['input:0']['_buttonState'], False)
                 # The simulated press during Input.GetConfig happened before the
                 # released-position sample and must not overwrite that sample.
                 with self.assertRaises(queue.Empty):

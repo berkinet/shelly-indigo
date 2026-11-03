@@ -50,7 +50,10 @@ class ProtocolTests(unittest.TestCase):
         session = Session(sock, lambda *args: updates.append(args))
         self.assertEqual(session.call('Shelly.GetStatus'), {'ok': True})
         self.assertEqual(len(updates), 1)
-        self.assertEqual(sock.sent[0]['src'], 'shelly-indigo')
+        self.assertEqual(sock.sent[0]['src'], session.source)
+        self.assertTrue(session.source.startswith('shelly-indigo-'))
+        other = Session(Socket([]), lambda *args: None)
+        self.assertNotEqual(session.source, other.source)
 
     def test_digest_matches_independent_known_calculation_old_and_new_nonce(self):
         sha = lambda text: hashlib.sha256(text.encode()).hexdigest()

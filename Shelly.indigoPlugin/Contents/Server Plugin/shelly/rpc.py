@@ -37,6 +37,7 @@ class Session:
     def __init__(self, socket, notify, password="", timeout=8, identity=None):
         self.socket, self.notify = socket, notify
         self.password, self.timeout, self.identity = password, timeout, identity
+        self.source = "shelly-indigo-" + secrets.token_hex(6)
         self.sequence = 0
         self.challenge = None
         self.nonce_count = 0
@@ -78,7 +79,7 @@ class Session:
 
     def call(self, method, params=None):
         self.sequence += 1
-        request = {"id": self.sequence, "src": "shelly-indigo", "method": method,
+        request = {"id": self.sequence, "src": self.source, "method": method,
                    "params": params or {}}
         if self.challenge is not None:
             request["auth"] = self._authentication()
