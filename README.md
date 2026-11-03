@@ -173,8 +173,10 @@ passed absolute/relative brightness and On/Off/Toggle through the installed Indi
 adapter. Its starting output and remembered brightness were restored. Earlier
 isolated-worker tests covered Pro outputs and Gen4 press/release alongside 0.2.1.
 Four sanitized firmware captures feed regression tests. Native dialogs, held-at-startup
-input sampling, metering accuracy and real network interruption still need the
-focused checks in [hardware validation](docs/hardware-validation.md).
+input sampling, metering accuracy and broader network cases remain in the
+[hardware validation](docs/hardware-validation.md) checklist. An owner-operated Pro
+4PM power cycle also passed: all four channels went Offline and recovered
+automatically; an On request rejected while offline was not replayed.
 
 ```zsh
 python3.13 -m unittest discover -s tests

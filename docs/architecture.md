@@ -210,8 +210,10 @@ semantics. Four sanitized real firmware result sets are replayed through Session
 inventory and the strict Indigo adapter. Their generated transport envelopes are
 explicitly distinguished from recorded HTTP result bodies. Physical controls and
 external changes passed on the selected Pro outputs, with live Gen4 button events
-and startup sampling; metering accuracy and actual network interruption remain in
-the hardware matrix. Broader components and
+and startup sampling. A subsequent installed-plugin Pro 4PM power cycle verified
+shared-channel Offline/recovery, repeat-warning suppression and rejection without
+replay of an offline command. Metering accuracy, network-only isolation and DHCP
+reassignment remain in the hardware matrix. Broader components and
 performance tuning should follow that evidence. See [hardware validation](hardware-validation.md).
 
 ## Focused suite review — 3 November 2026

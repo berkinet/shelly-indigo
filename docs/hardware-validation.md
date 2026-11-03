@@ -17,14 +17,14 @@ were needed to restore MCP.
 | Area | Evidence for this change | Remaining validation |
 | --- | --- | --- |
 | Gen4 input startup and press/release | Released startup sample known Off; real btn_down/btn_up gave On/Off in revised worker/model; actual installed Indigo input also On for the physical hold and Off on release | Held-across-startup with this asynchronous version (deferred to the next owner session) |
-| Selected Pro relay | On, Off, Toggle and change from a separate RPC connection; starting Off restored and verified | Physical load/reference measurement; network interruption |
+| Selected Pro relay | On, Off, Toggle and change from a separate RPC connection; starting Off restored and verified | Physical load/reference measurement; network-only isolation without reboot |
 | Selected Pro dimmer | 20%, brighten +10 to 30%, dim -5 to 25%, Off/On/Toggle; external change; starting Off with retained 100% restored and verified | Reference meter comparison |
 | Selected Gen3 dimmer | Installed 0.2.2: 20 → 30 → 25%, On/Off/Toggle via MCP; device reports checked; starting Off/retained 3% restored | Reference meter comparison |
 | Firmware response compatibility | Sanitized Gen4 Mini, Gen3 Dimmer, Gen2 Pro Dimmer and Pro 4PM captures replayed through production protocol/worker/inventory/adapter | Additional models/firmware as hardware becomes available |
 | Native Button Pressed trigger | Retained simulator/adapter tests and earlier owner evidence; this test sent no synthetic button events | Conditions and event execution with the installed 0.2.2 archive |
 | Passwords/communication-off | Save/Cancel, authentication and shared-worker stop/resume regressions retained | Protected hardware and native dialog/checkbox checks after upgrade |
 | Dialogs and release installation | Owner-installed 0.2.2 confirmed running; installed source/XML matches release; selected existing binding controlled successfully | Open/check each native dialog; broader upgrade/binding checks |
-| DHCP/network recovery | Generation, identity, disconnect and address-swap tests | Real router/network interruption |
+| DHCP/network recovery | Installed 0.2.2: owner-operated Pro 4PM power loss/reboot; all four channels Offline then automatic recovery; rejected offline On was not replayed | Network-only isolation without reboot; actual DHCP reassignment |
 
 ### Physical control evidence
 
@@ -57,8 +57,8 @@ and translated, but the relay had zero reported load and no calibrated reference
 meter was used. This does **not** establish metering accuracy or visual/physical
 lamp brightness. The earlier isolated-worker checks and installed 0.2.1 input
 observations are distinct from the later Gen3 controls through the installed 0.2.2
-adapter. No native dialog rendering, held-at-startup check or real LAN interruption
-is claimed by these output tests. Real WebSocket notification captures also remain
+adapter. Those output checks do not establish native dialog rendering or held-at-startup
+behavior. The subsequent physical power-loss/recovery test is recorded separately below. Real WebSocket notification captures also remain
 outstanding; the current fixtures contain recorded HTTP result bodies.
 
 The initial parallel diagnostic used a shared RPC source and failed to receive an
@@ -66,6 +66,40 @@ external notification before its deadline. Starting states were restored even on
 that failure. Unique per-session source IDs resolved concurrent notification delivery
 on the repeat; an independent session now cannot share the plugin's routing identity.
 No firmware, input mode, relay behavior or other device configuration was changed.
+
+### Physical power-loss/recovery evidence — 3 November 2026
+
+The owner selected all four existing channels of the Pro 4PM (SPSW-104PE16EU,
+firmware **2.2.0-beta2**) and manually turned off its power, then restored power
+when requested. The installed plugin was **0.2.2**. All channels started enabled,
+online and Off; their communication settings remained enabled. No plugin restart,
+router/firewall changes, new Indigo devices or hardware configuration writes were used.
+
+A read-only Indigo host monitor sampled the four channel states/errors every
+200 ms and recorded matching plugin log entries. A separate Gen4 input was
+monitored as an unaffected reference. Observations in Europe/Paris local time:
+
+- **17:23:48:** all four channels became Offline, retaining their last known Off
+  state and existing IDs/names. The plugin logged the first status-call timeout.
+- **17:23:57:** a different connection-timeout reason produced one further outage
+  warning. Four subsequent identical failures were logged at Debug, not Warning.
+- **17:24:08:** one On request was sent through MCP to channel 0 while the unit was
+  powered off. MCP accepted the asynchronous request; the installed plugin then
+  explicitly logged that it was rejected because the Shelly was offline.
+- **17:25:32:** the plugin logged recovery and all four original channels became
+  online with errors cleared. All four remained Off for at least another 30 seconds;
+  the rejected On was not replayed. The reference input stayed online throughout.
+- A final identity-checked, read-only hardware status confirmed all four physical
+  outputs Off, with a low uptime consistent with the owner's power cycle.
+
+This verifies a real device power-loss/reboot and reconnection through the installed
+adapter, including shared-channel error handling, repeat-warning suppression,
+offline command rejection and recovery without replay of that rejected request.
+It does not exercise a command transmitted just before transport loss, a network-only
+outage with the device still powered, or DHCP reassignment. The time from actual
+power removal/restoration was not instrumented, so the observed Offline-to-recovered
+interval includes the owner's powered-off period, reboot and retry backoff; it is
+not a measured detection/reconnection latency bound.
 
 ## Historical validation records
 
