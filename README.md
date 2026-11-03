@@ -167,13 +167,14 @@ cannot be guaranteed.
 
 This beta includes offline behavioral regressions, a strict real WebSocket
 simulator, the actual plugin event loop with an Indigo contract double, authenticated
-exchanges, Ubuntu/macOS CI and source/archive loader checks. It has not been installed
-or enabled in the owner's live Indigo server as part of this release work.
-The revised worker passed physical relay/dimmer control and external-change checks
-on owner-selected outputs, and Gen4 press/release checks alongside the installed
-0.2.1 plugin. Four sanitized firmware captures feed regression tests. Native dialogs,
-installation of this beta, metering accuracy and network interruption still need
-the focused checks in [hardware validation](docs/hardware-validation.md).
+exchanges, Ubuntu/macOS CI and source/archive loader checks. The owner has installed
+0.2.2; the installed Python/XML files match the release, and a selected Gen3 dimmer
+passed absolute/relative brightness and On/Off/Toggle through the installed Indigo
+adapter. Its starting output and remembered brightness were restored. Earlier
+isolated-worker tests covered Pro outputs and Gen4 press/release alongside 0.2.1.
+Four sanitized firmware captures feed regression tests. Native dialogs, held-at-startup
+input sampling, metering accuracy and real network interruption still need the
+focused checks in [hardware validation](docs/hardware-validation.md).
 
 ```zsh
 python3.13 -m unittest discover -s tests

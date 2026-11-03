@@ -1,23 +1,29 @@
 # Hardware validation
 
-## Current status — 0.2.2 beta preparation, 3 November 2026
+## Current status — installed 0.2.2 beta, 3 November 2026
 
-The revised 0.2.2 worker was exercised in an isolated process against owner-selected
-hardware. The installed Indigo plugin remained **0.2.1**, on Indigo 2026.1/API 3.9;
-this session did not install, enable or restart a replacement plugin. The owner
-explicitly authorized these output tests. Existing Indigo IDs/bindings were checked
-through Indigo's local scripting interface. The MCP connector returned HTTP 429
-and its troubleshooting was deferred at the owner's request.
+The owner installed **0.2.2** after publication. MCP confirms it is enabled and
+running on Indigo 2026.1/API 3.9; the installed plugin's 20 Python/XML source files
+match the released checkout. The selected Gen3 dimmer was subsequently exercised
+through MCP controls and the installed native Indigo adapter, with actual Shelly
+status checked after each command and the starting state restored.
+
+Earlier Pro relay/dimmer and Gen4 input checks below used an isolated 0.2.2 worker
+alongside the then-installed 0.2.1 plugin. Those checks retain that narrower scope.
+MCP access was restored by starting its stopped local tunnel, then installing an
+owner-approved login service. No credential or Indigo device configuration changes
+were needed to restore MCP.
 
 | Area | Evidence for this change | Remaining validation |
 | --- | --- | --- |
-| Gen4 input startup and press/release | Released startup sample known Off; real btn_down/btn_up gave On/Off in revised worker/model; actual installed Indigo input also On for the physical hold and Off on release | Held-across-startup with this asynchronous version; archive upgrade |
+| Gen4 input startup and press/release | Released startup sample known Off; real btn_down/btn_up gave On/Off in revised worker/model; actual installed Indigo input also On for the physical hold and Off on release | Held-across-startup with this asynchronous version (deferred to the next owner session) |
 | Selected Pro relay | On, Off, Toggle and change from a separate RPC connection; starting Off restored and verified | Physical load/reference measurement; network interruption |
-| Selected Pro dimmer | 20%, brighten +10 to 30%, dim -5 to 25%, Off/On/Toggle; external change; starting Off with retained 100% restored and verified | Gen3 physical dimmer controls; reference meter comparison |
+| Selected Pro dimmer | 20%, brighten +10 to 30%, dim -5 to 25%, Off/On/Toggle; external change; starting Off with retained 100% restored and verified | Reference meter comparison |
+| Selected Gen3 dimmer | Installed 0.2.2: 20 → 30 → 25%, On/Off/Toggle via MCP; device reports checked; starting Off/retained 3% restored | Reference meter comparison |
 | Firmware response compatibility | Sanitized Gen4 Mini, Gen3 Dimmer, Gen2 Pro Dimmer and Pro 4PM captures replayed through production protocol/worker/inventory/adapter | Additional models/firmware as hardware becomes available |
 | Native Button Pressed trigger | Retained simulator/adapter tests and earlier owner evidence; this test sent no synthetic button events | Conditions and event execution with the installed 0.2.2 archive |
 | Passwords/communication-off | Save/Cancel, authentication and shared-worker stop/resume regressions retained | Protected hardware and native dialog/checkbox checks after upgrade |
-| Dialogs and release installation | XML callback, strict host and isolated source/archive loader checks | Open native dialogs after upgrading; verify retained IDs/names/bindings |
+| Dialogs and release installation | Owner-installed 0.2.2 confirmed running; installed source/XML matches release; selected existing binding controlled successfully | Open/check each native dialog; broader upgrade/binding checks |
 | DHCP/network recovery | Generation, identity, disconnect and address-swap tests | Real router/network interruption |
 
 ### Physical control evidence
@@ -30,6 +36,14 @@ and its troubleshooting was deferred at the owner's request.
   Initial/final output Off, retained brightness 100. Absolute and relative steps
   produced 20 → 30 → 25, with On/Off/Toggle state confirmations in approximately
   **0.044–0.636 s**. An external Off was observed in **0.429 s**.
+- Gen3 dimmer: owner-selected S3DM-0A101WWL, firmware **2.0.3**, light:0.
+  Controls ran through MCP into the installed 0.2.2 Indigo plugin: SetBrightness
+  20, BrightenBy 10 (30), DimBy 5 (25), Off, On, Toggle Off, Toggle On. Each action
+  was verified against a fresh physical Shelly status. Initial output Off with
+  retained brightness 3 was restored and verified; Indigo then reported online,
+  Off, displayed brightness 0 and no error. The retained-level restoration used an
+  identity-checked direct RPC so it did not require briefly turning the lamp on
+  at its remembered level. Metering was present, without a reference accuracy test.
 - Input: owner-selected 1PM Mini Gen4,
   model S4SW-001P8EU, firmware **2.1.1**, input:0. Its relay was not operated or
   represented by a new Indigo device. Two owner-operated holds were observed in
@@ -41,8 +55,11 @@ These timings are observations on this LAN, from queue admission to a received
 matching status; they are not performance guarantees. Metering fields were present
 and translated, but the relay had zero reported load and no calibrated reference
 meter was used. This does **not** establish metering accuracy or visual/physical
-lamp brightness. Hardware tests of worker networking and the installed 0.2.1 input
-are distinct from end-to-end installation testing of the 0.2.2 native adapter.
+lamp brightness. The earlier isolated-worker checks and installed 0.2.1 input
+observations are distinct from the later Gen3 controls through the installed 0.2.2
+adapter. No native dialog rendering, held-at-startup check or real LAN interruption
+is claimed by these output tests. Real WebSocket notification captures also remain
+outstanding; the current fixtures contain recorded HTTP result bodies.
 
 The initial parallel diagnostic used a shared RPC source and failed to receive an
 external notification before its deadline. Starting states were restored even on
