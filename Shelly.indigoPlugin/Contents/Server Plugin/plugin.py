@@ -3,7 +3,6 @@ from pathlib import Path
 import importlib
 import logging
 import queue
-import re
 import sys
 import threading
 import time
@@ -15,7 +14,7 @@ sys.path.insert(0, str(Path(shelly.__file__).resolve().parents[2] / "Packages"))
 import indigo
 from shelly.commands import translate
 from shelly.bindings import expected_device_type, selection_key, channel_properties, device_label, channel_label
-from shelly.catalog import Catalog, ALL_DEVICES, NO_CHANNEL
+from shelly.catalog import Catalog, ALL_DEVICES
 from shelly.dialogs import DeviceDialogs
 from shelly.buttons import ButtonEvents
 from shelly.connections import CommunicationPolicy, Connections
@@ -123,6 +122,21 @@ class Plugin(indigo.PluginBase):
     def _communication_allowed(self, address, identity=None, bindings=None):
         matches = self._communication_bindings(address, identity, bindings)
         return not matches or any(self._device_communicating(dev) for dev in matches)
+
+    def _connection_log_context(self, address, identity=None, info=None):
+        info = info or self.info.get(address) or self.catalog_service.get_device(identity)
+        identity = info.get("id") or identity
+        label = f"{self._device_label({**info, 'id': identity})} at {address}" if identity else f"at {address}"
+        matches = self._communication_bindings(address, identity)
+        active = [dev for dev in matches if self._device_communicating(dev)]
+        if active:
+            context = "active Indigo devices: " + ", ".join(f"{dev.name} (Indigo {dev.id})" for dev in active)
+        elif matches:
+            context = "assigned Indigo devices (communication disabled): " + ", ".join(
+                f"{dev.name} (Indigo {dev.id})" for dev in matches)
+        else:
+            context = "no Indigo devices assigned"
+        return label, context
 
     def _pause(self, address):
         # Preserve offline selector entries so another channel can be explicitly
@@ -438,7 +452,8 @@ class Plugin(indigo.PluginBase):
                 # still registered. Probe the vacated address for a different unit.
                 self.pending_probes[old_address] = info["id"]
             if address in self.outages:
-                self.logger.info("Shelly %s at %s recovered", self._device_label(info), address)
+                label, context = self._connection_log_context(address, info=info)
+                self.logger.info("Shelly %s recovered; %s", label, context)
                 self.outages.pop(address, None)
             self.info[address] = info
             self.logger.debug("Querying %s (Gen%s)", info["id"], info["gen"])
@@ -474,15 +489,12 @@ class Plugin(indigo.PluginBase):
             if address in self.inventory:
                 self.inventory[address].invalidate_buttons()
             self.catalog_service.offline(address)
+            label, context = self._connection_log_context(address, identity)
             if self.outages.get(address) != payload:
-                matches = self._communication_bindings(address, identity)
-                active = ", ".join(f"{dev.name} (Indigo {dev.id})" for dev in matches
-                                   if self._device_communicating(dev))
-                context = f"; active Indigo devices: {active}" if active else ""
-                self.logger.warning("Shelly %s unavailable%s: %s", address, context, payload)
+                self.logger.warning("Shelly %s unavailable; %s: %s", label, context, payload)
                 self.outages[address] = payload
             else:
-                self.logger.debug("Shelly %s still unavailable: %s", address, payload)
+                self.logger.debug("Shelly %s still unavailable; %s: %s", label, context, payload)
             for dev in self._devices():
                 if self._device_communicating(dev) and dev.pluginProps.get("host") == address:
                     if self._block_invalid_binding(dev):

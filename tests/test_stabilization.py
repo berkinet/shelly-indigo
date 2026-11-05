@@ -140,14 +140,69 @@ class StabilizationTests(unittest.TestCase):
             self.plugin.runConcurrentThread()
             self.assertEqual(factory.call_count, 2)
 
-    def test_offline_logs_are_deduplicated_and_recovery_is_visible(self):
+    def test_offline_logs_are_deduplicated_and_recovery_names_assigned_devices(self):
+        self.host.info['name'] = 'Fixture relay'
         with self.assertLogs('test-plugin', level='DEBUG') as logs:
             self.plugin._handle('offline', self.host.address, 'RPC timeout')
             self.plugin._handle('offline', self.host.address, 'RPC timeout')
             self.plugin._handle('ready', self.host.address, (self.host.info, self.host.status))
         warnings = [record for record in logs.records if record.levelname == 'WARNING']
         self.assertEqual(len(warnings), 1)
-        self.assertTrue(any('recovered' in line for line in logs.output))
+        relevant = [record for record in logs.records if any(word in record.getMessage()
+                    for word in ('unavailable', 'recovered'))]
+        self.assertEqual([record.levelname for record in relevant], ['WARNING', 'DEBUG', 'INFO'])
+        for record in relevant:
+            message = record.getMessage()
+            self.assertIn('Fixture relay (shelly-unit)', message)
+            self.assertIn(self.host.address, message)
+            self.assertIn('active Indigo devices:', message)
+            for dev in self.host.devices.values():
+                self.assertIn(f'{dev.name} (Indigo {dev.id})', message)
+            self.assertNotIn('no Indigo devices assigned', message)
+
+    def test_unassigned_outage_repeat_and_recovery_show_physical_identity_and_assignment(self):
+        address = '192.0.2.45:80'
+        for name in (None, 'Fixture plug'):
+            with self.subTest(name=name):
+                info = {'id': 'shelly-plug', 'gen': 3, 'name': name}
+                self.plugin._handle('ready', address, (info, {'sys': {'cfg_rev': 1}}))
+                with self.assertLogs('test-plugin', level='DEBUG') as logs:
+                    self.plugin._handle('offline', address, 'RPC timeout')
+                    self.plugin._handle('offline', address, 'RPC timeout')
+                    self.plugin._handle('ready', address, (info, {'sys': {'cfg_rev': 1}}))
+                relevant = [record for record in logs.records if any(word in record.getMessage()
+                            for word in ('unavailable', 'recovered'))]
+                self.assertEqual([record.levelname for record in relevant], ['WARNING', 'DEBUG', 'INFO'])
+                for record in relevant:
+                    message = record.getMessage()
+                    self.assertIn('shelly-plug', message)
+                    if name:
+                        self.assertIn(name, message)
+                    self.assertIn(address, message)
+                    self.assertIn('no Indigo devices assigned', message)
+                    self.assertNotIn('None', message)
+
+    def test_pre_ready_outage_uses_public_identity_and_name_from_catalog(self):
+        address = '192.0.2.46:80'
+        info = {'id': 'shelly-protected', 'gen': 4, 'name': 'Fixture protected unit', 'auth_en': True}
+        self.plugin._handle('identified', address, info)
+        self.plugin.workers[address] = Mock(expected_id=info['id'])
+        with self.assertLogs('test-plugin', level='WARNING') as logs:
+            self.plugin._handle('offline', address, 'Local authentication required')
+        message = logs.records[0].getMessage()
+        self.assertIn('Fixture protected unit (shelly-protected)', message)
+        self.assertIn(address, message)
+        self.assertIn('no Indigo devices assigned', message)
+
+    def test_unknown_endpoint_outage_does_not_invent_an_identity(self):
+        address = '192.0.2.47:80'
+        with self.assertLogs('test-plugin', level='WARNING') as logs:
+            self.plugin._handle('offline', address, 'Connection timed out')
+        message = logs.records[0].getMessage()
+        self.assertIn(address, message)
+        self.assertIn('no Indigo devices assigned', message)
+        self.assertNotIn('shelly-unit', message)
+        self.assertNotIn('None', message)
 
     def test_bounded_queue_rejects_action_without_blocking(self):
         self.plugin.events = queue.Queue(maxsize=1)

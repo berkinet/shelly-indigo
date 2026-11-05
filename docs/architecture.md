@@ -81,7 +81,12 @@ preventing alternate-address ping-pong.
 Unassigned offline endpoints expire after fifteen minutes without rediscovery.
 Saved Indigo hosts and explicit hosts retain reconnect attempts. A powered-off
 configured unit logs its first failure, changes in failure reason and recovery;
-unchanged repeated failures use Debug.
+unchanged repeated failures use Debug. Outage, repeat and recovery messages identify
+the physical unit using its known local name/ID and address, then list active Indigo
+bindings or explicitly state that no Indigo devices are assigned. Before the first
+ready snapshot, public identity metadata from the catalog can supply the label;
+an unidentified failed probe uses its address. Unknown identities are not inferred
+from another endpoint's catalog record.
 
 Each concurrent-thread invocation has its own closing event. Cleanup fences and
 stops workers, joins within a total deadline and marks communication unavailable.

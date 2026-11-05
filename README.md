@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.2 beta
+# Shelly for Indigo — 0.2.3 beta
 
 Shelly for Indigo follows a simple design philosophy: small, lightweight software
 built to meet a well-defined need. It provides direct, local communication between
@@ -136,6 +136,11 @@ step or reconnection.
 The Event Log preference offers **Info** and **Debug** and applies immediately.
 Discovery, queries and detailed inventory summaries use Debug; warnings and errors
 remain visible at both levels. The plugin file log retains Debug diagnostics.
+Connection outage and recovery logs include the Shelly's known local name/device ID,
+its address, and the active Indigo device names and IDs. An unassigned discovered
+unit explicitly says **no Indigo devices assigned**. Before its identity has been
+read, the log uses its address without inventing a device name. Repeated identical
+failures retain this context at Debug level.
 Restart after changing discovery or additional-host preferences.
 Per-device password changes reconnect that unit when communication is enabled;
 saving a password never enables disabled communications.
@@ -193,14 +198,14 @@ runtime archives; isolated source-build tooling is not a fully reproducible buil
 or a vendored-library security audit.
 
 For a release, commit and push the intended source, wait for the complete CI
-workflow, then run `python3.13 tools/release.py --tag v0.2.2-beta.1 --publish`.
-Use a new tag such as `v0.2.2-beta.2` for another beta of the same plugin version;
+workflow, then run `python3.13 tools/release.py --tag v0.2.3-beta.1 --publish`.
+Use a new tag such as `v0.2.3-beta.2` for another beta of the same plugin version;
 `--notes-file` and `--title` can override defaults. A tag without a prerelease suffix
 creates a stable release. The tool reruns checks and builds a fresh archive with a
 source-commit and SHA-256 manifest. Existing releases/assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.2-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.3-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 
