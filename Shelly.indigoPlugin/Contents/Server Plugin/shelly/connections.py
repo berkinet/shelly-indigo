@@ -1,7 +1,15 @@
 """Connection ownership. Mutated only by the Indigo adapter's event loop."""
+from dataclasses import dataclass
 import itertools
 import time
 import threading
+
+
+@dataclass
+class VacatedEndpoint:
+    """A fresh old-address hint waits while the verified owner is online."""
+    identity: str
+    rediscovered: bool = False
 
 
 class Connections:
@@ -9,6 +17,8 @@ class Connections:
         self.workers = {}
         self.generations = {}
         self.owners = {}
+        self.last_addresses: dict[str, str] = {}  # Survives transport retirement.
+        self.vacated: dict[str, VacatedEndpoint] = {}
         self.seen = {}
         self._sequence = itertools.count(1)
 
@@ -38,8 +48,24 @@ class Connections:
     def claim(self, identity, address):
         obsolete = [host for host, worker in self.workers.items() if host != address
                     and (self.owners.get(identity) == host or worker.expected_id == identity)]
+        for other, owner in list(self.owners.items()):
+            if other != identity and owner == address:
+                del self.owners[other]
         self.owners[identity] = address
+        self.last_addresses[identity] = address
+        self.vacated.pop(address, None)
         return obsolete
+
+    def vacate(self, address, identity):
+        self.vacated[address] = VacatedEndpoint(identity)
+
+    def return_candidates(self, identity):
+        addresses = []
+        for address, previous in self.vacated.items():
+            if previous.identity == identity and previous.rediscovered:
+                previous.rediscovered = False
+                addresses.append(address)
+        return addresses
 
 
 class CommunicationPolicy:

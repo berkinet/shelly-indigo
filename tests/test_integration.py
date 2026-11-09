@@ -1,5 +1,6 @@
 """Real worker + plugin event loop + strict Indigo contract double, using loopback only."""
 import queue
+import socket
 import sys
 import threading
 import time
@@ -75,6 +76,39 @@ class IntegrationTests(unittest.TestCase):
             self.assertEqual(dev.states['brightnessLevel'], 0)
             self.assertEqual(len(host.host.devices), 1)
             self.assertFalse(any('Config' in method for method in list(sim.server.methods.queue)[-3:]))
+
+    def test_real_loop_recovers_after_endpoint_move_and_retires_failed_old_probe(self):
+        unavailable = threading.Event()
+        def old_endpoint(handler, request):
+            if unavailable.is_set():
+                handler.connection.shutdown(socket.SHUT_RDWR)
+                return True
+        with LocalShelly(on_request=old_endpoint) as old, LocalShelly() as new, RunningPlugin(
+                old.endpoint, poll_interval=.08, rpc_timeout=.3) as host:
+            dev = host.create(includeSwitches=True)[0]
+            saved_id, saved_name = dev.id, dev.name
+            with self.assertLogs('test-plugin', level='DEBUG') as logs:
+                unavailable.set()
+                wait_for(lambda: not dev.states['online'], message='old endpoint unavailable')
+                host.plugin._emit('bonjour', new.endpoint, 'shelly-simulator')
+                wait_for(lambda: dev.pluginProps['host'] == new.endpoint and dev.states['online'],
+                         message='same physical unit recovered at its new endpoint')
+                wait_for(lambda: old.endpoint not in host.plugin.workers, message='finite vacated probe retired')
+                host.plugin._emit('bonjour', old.endpoint, 'shelly-simulator')
+                host.action(dev, 'TurnOn')
+                wait_for(lambda: dev.states['onOffState'], message='control routed to the new endpoint')
+                self.assertNotIn(old.endpoint, host.plugin.workers)
+            transitions = [record.getMessage() for record in logs.records if record.levelname == 'INFO'
+                           and 'address change' in record.getMessage()]
+            self.assertEqual(len(transitions), 1)
+            self.assertIn('recovered after address change', transitions[0])
+            self.assertIn(old.endpoint, transitions[0])
+            self.assertIn(new.endpoint, transitions[0])
+            self.assertFalse(any(record.levelname == 'WARNING' and 'no Indigo devices assigned' in record.getMessage()
+                                 for record in logs.records))
+            self.assertEqual((dev.id, dev.name), (saved_id, saved_name))
+            self.assertEqual(old.server.controls.qsize(), 0)
+            self.assertEqual(new.server.controls.qsize(), 1)
 
     def test_live_press_release_after_clock_rollback_updates_state_and_native_trigger(self):
         fired = threading.Event()

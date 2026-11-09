@@ -340,6 +340,9 @@ class Worker(threading.Thread):
                     if identity == self.exclude_id:
                         self.emit("alias", self.address, info)
                         break
+                    # Finding a different unit completes a vacated-address probe;
+                    # authentication and subsequent reconnects use normal discovery policy.
+                    self.exclude_id = None
                     if self.expected_id and identity != self.expected_id:
                         raise IdentityChanged(info)
                     if self.permitted is not None and not self.permitted(identity):
@@ -409,12 +412,16 @@ class Worker(threading.Thread):
                         if session is not None:
                             reason = session._safe_message(reason)
                         try:
-                            if isinstance(exc, AuthenticationError):
+                            if self.exclude_id is not None:
+                                self.emit("probe_failed", self.address, reason)
+                            elif isinstance(exc, AuthenticationError):
                                 self.emit("auth_required", self.address, {"id": self.expected_id, "reason": reason})
                             else:
                                 self.emit("offline", self.address, reason)
                         except BufferError:
                             pass  # Adapter separately records and handles event-queue overflow.
+                    if self.exclude_id is not None:
+                        break
                     if isinstance(exc, AuthenticationError):
                         delay = 300
                 finally:

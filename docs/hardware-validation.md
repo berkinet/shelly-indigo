@@ -1,6 +1,20 @@
 # Hardware validation
 
-## Current status — installed 0.2.2 beta, 3 November 2026
+## 9 November 2026 — field address-change diagnosis, 0.2.3
+
+After a power failure, a configured Gen3 1PM Mini appeared at a different DHCP
+address. Logs and a live MCP read confirmed that the existing Indigo device was
+online with its error cleared at the new address. The 0.2.3 log omitted recovery
+because its outage state was indexed by the previous endpoint; a vacated-address
+probe then kept retrying the empty old address and logged it as unassigned.
+
+The 0.2.4 fix is validated by lifecycle regressions and a real loopback WebSocket
+move/recovery test. The field event establishes real hardware address migration
+and the original defect; the new code has not been installed or used to force
+another physical DHCP move in this session. No device output or network setting
+was changed during this diagnosis.
+
+## Historical hardware validation — installed 0.2.2 beta, 3 November 2026
 
 The owner installed **0.2.2** after publication. MCP confirms it is enabled and
 running on Indigo 2026.1/API 3.9; the installed plugin's 20 Python/XML source files

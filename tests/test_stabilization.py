@@ -321,6 +321,7 @@ class LifecycleEdgeTests(unittest.TestCase):
 
     def test_full_worker_event_queue_is_visible_and_connection_is_rebuilt(self):
         with patch('plugin.Worker') as factory:
+            factory.return_value.exclude_id = None
             self.plugin._connect('192.0.2.7:80')
             emit = factory.call_args.args[1]
             generation = self.plugin.connections.generations['192.0.2.7:80']

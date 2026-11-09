@@ -138,13 +138,25 @@ class Plugin(indigo.PluginBase):
             context = "no Indigo devices assigned"
         return label, context
 
+    @staticmethod
+    def _outage_key(address: str, identity: str | None = None) -> tuple[str, str]:
+        # A known physical unit can recover at a different endpoint.
+        return ("device", identity) if identity else ("endpoint", address)
+
+    def _clear_outage(self, address, identity=None):
+        self.outages.pop(self._outage_key(address, identity), None)
+        self.outages.pop(self._outage_key(address), None)
+
     def _pause(self, address):
         # Preserve offline selector entries so another channel can be explicitly
         # added later, while removing the worker and fencing all of its messages.
+        identity = self.info.get(address, {}).get("id")
+        if identity is None and address in self.workers:
+            identity = self.workers[address].expected_id
         cached = self.catalog_service.pause_snapshot(address)
         self._retire(address)
         self.pending_probes.pop(address, None)
-        self.outages.pop(address, None)
+        self._clear_outage(address, identity)
         self.catalog_service.restore_paused(address, cached)
         self.logger.debug("Shelly communication stopped at %s: no enabled Indigo channels", address)
 
@@ -157,6 +169,20 @@ class Plugin(indigo.PluginBase):
 
     def _connect(self, address, expected_id=None, exclude_id=None, hint_id=None):
         address = endpoint(address)
+        previous = self.connections.vacated.get(address)
+        if previous is not None and expected_id is None and exclude_id is None:
+            owner = self.connections.owners.get(previous.identity)
+            worker = self.workers.get(owner)
+            if hint_id == previous.identity:
+                if worker is not None and worker.online:
+                    # Remember a fresh hint in case the current connection later fails.
+                    previous.rediscovered = True
+                    self.logger.debug("Ignoring former Shelly endpoint %s for %s; active at %s",
+                                      address, previous.identity, owner)
+                    return
+                expected_id = previous.identity
+            else:
+                exclude_id = previous.identity
         known = self.info.get(address, {}).get("id")
         if known is None and address in self.workers:
             known = self.workers[address].expected_id
@@ -239,7 +265,11 @@ class Plugin(indigo.PluginBase):
             overflows, self.overflows = self.overflows, set()
         for address, generation in overflows:
             if self.connections.current(address, generation):
-                expected = self.workers[address].expected_id
+                worker = self.workers[address]
+                if worker.exclude_id is not None:
+                    self._handle("probe_failed", address, "Event queue overloaded; vacated-address probe retired", generation)
+                    continue
+                expected = worker.expected_id
                 self._handle("offline", address, "Event queue overloaded; connection reset, queued commands discarded")
                 self._retire(address)
                 self._connect(address, expected)
@@ -265,7 +295,7 @@ class Plugin(indigo.PluginBase):
                     and self.connections.seen.get(address, 0) < cutoff):
                 self.logger.debug("Retiring stale unassigned Shelly endpoint %s", address)
                 self._retire(address)
-                self.outages.pop(address, None)
+                self._clear_outage(address, identity)
                 self.catalog_service.forget(address)
 
     def deviceStartComm(self, dev):
@@ -336,6 +366,39 @@ class Plugin(indigo.PluginBase):
                 for dev in self._devices():
                     if self._device_communicating(dev) and self._selection_key(dev.pluginProps):
                         self._channel_unavailable(dev, "Plugin communication stopped")
+
+    def _claim_endpoint(self, address, info):
+        """Claim a verified address and report one physical-device transition."""
+        previous = self.connections.last_addresses.get(info["id"])
+        if previous is None:
+            saved = {endpoint(dev.pluginProps["host"]) for dev in self._communication_bindings("", info["id"])
+                     if dev.pluginProps.get("host")}
+            previous = next(iter(saved)) if len(saved) == 1 else None
+        recovering = (self._outage_key(address, info["id"]) in self.outages
+                      or self._outage_key(address) in self.outages)
+        obsolete = set(self.connections.claim(info["id"], address))
+        obsolete.update(host for host, item in self.info.items() if host != address and item["id"] == info["id"])
+        if previous and previous != address:
+            occupant = self.info.get(previous, {}).get("id")
+            if occupant is None and previous in self.workers:
+                occupant = self.workers[previous].expected_id
+            if occupant is None or occupant == info["id"]:
+                obsolete.add(previous)
+        for old_address in obsolete:
+            self._retire(old_address)
+            self._clear_outage(old_address)
+            self.connections.vacate(old_address, info["id"])
+            # Catch an address swap even if Bonjour arrived before old-worker retirement.
+            self.pending_probes[old_address] = info["id"]
+        if previous and previous != address:
+            _, context = self._connection_log_context(address, info=info)
+            transition = "recovered after address change" if recovering else "address changed"
+            self.logger.info("Shelly %s %s from %s to %s; %s",
+                             self._device_label(info), transition, previous, address, context)
+        elif recovering:
+            label, context = self._connection_log_context(address, info=info)
+            self.logger.info("Shelly %s recovered; %s", label, context)
+        self._clear_outage(address, info["id"])
 
     def _handle(self, kind, address, payload, generation=None):
         if generation is not None and not self.connections.current(address, generation):
@@ -431,6 +494,12 @@ class Plugin(indigo.PluginBase):
             # This address still serves a unit already moved to another endpoint.
             self.logger.debug("Retired alternate endpoint %s for %s", address, payload["id"])
             self._retire(address)
+        elif kind == "probe_failed":
+            # A vacated address is checked once for reuse, not monitored as a new outage.
+            self.logger.debug("Vacated Shelly endpoint %s did not answer; retiring probe: %s", address, payload)
+            self._retire(address)
+            self.pending_probes.pop(address, None)
+            self._clear_outage(address)
         elif kind == "mismatch":
             self._handle("offline", address, "Address now belongs to another Shelly; re-querying its public identity")
             self._retire(address)
@@ -443,18 +512,7 @@ class Plugin(indigo.PluginBase):
             if not self._communication_allowed(address, info["id"]):
                 self._suspend_identity(address, info)
                 return
-            obsolete = set(self.connections.claim(info["id"], address))
-            obsolete.update(host for host, item in self.info.items() if host != address and item["id"] == info["id"])
-            for old_address in obsolete:
-                self._retire(old_address)
-                self.outages.pop(old_address, None)
-                # A prior Bonjour update may have arrived while the old worker was
-                # still registered. Probe the vacated address for a different unit.
-                self.pending_probes[old_address] = info["id"]
-            if address in self.outages:
-                label, context = self._connection_log_context(address, info=info)
-                self.logger.info("Shelly %s recovered; %s", label, context)
-                self.outages.pop(address, None)
+            self._claim_endpoint(address, info)
             self.info[address] = info
             self.logger.debug("Querying %s (Gen%s)", info["id"], info["gen"])
             self.inventory[address] = Inventory()
@@ -490,9 +548,10 @@ class Plugin(indigo.PluginBase):
                 self.inventory[address].invalidate_buttons()
             self.catalog_service.offline(address)
             label, context = self._connection_log_context(address, identity)
-            if self.outages.get(address) != payload:
+            outage_key = self._outage_key(address, identity)
+            if self.outages.get(outage_key) != payload:
                 self.logger.warning("Shelly %s unavailable; %s: %s", label, context, payload)
-                self.outages[address] = payload
+                self.outages[outage_key] = payload
             else:
                 self.logger.debug("Shelly %s still unavailable; %s: %s", label, context, payload)
             for dev in self._devices():
@@ -504,6 +563,9 @@ class Plugin(indigo.PluginBase):
                         dev.updateStateOnServer("stateKnown", False)
                         dev.updateStateOnServer("inputStatus", "Offline")
                     dev.setErrorStateOnServer("Offline")
+            if identity and self.connections.owners.get(identity) == address:
+                for candidate in self.connections.return_candidates(identity):
+                    self._connect(candidate, expected_id=identity)
         elif kind == "command_cancelled":
             self.logger.debug("Shelly %s command %s cancelled: channel communication disabled", address, payload)
         elif kind == "command_error":

@@ -73,10 +73,25 @@ queued or late messages from a retired worker are ignored.
 
 A ready worker claims the physical identity and retires workers for its former
 addresses, including workers that never completed setup. Inventories, component
-summaries and catalogs for retired endpoints are removed. Old endpoints are
-re-probed for different units so an earlier Bonjour update is not lost during a
-DHCP swap. These probes exclude the just-moved identity before authentication,
-preventing alternate-address ping-pong.
+summaries and catalogs for retired endpoints are removed. Last verified physical
+addresses survive worker retirement, while outage deduplication uses physical ID
+(or endpoint only until identity is known). A ready transition logs one address
+change, or recovery after an address change, before clearing that unit's outage.
+The previous saved Indigo address is a fallback on the first connection after startup.
+
+Old endpoints are probed once for different units so an earlier Bonjour update is
+not lost during a DHCP swap. A failed vacated-address probe emits `probe_failed`,
+retires quietly at Debug, and never becomes an indefinitely retrying unassigned
+worker, including during queue overflow. A same-identity alias stops before auth;
+a different public identity finishes the probe and follows normal onboarding,
+including password-required reporting and subsequent connection retries.
+
+A typed vacated-endpoint record remembers the previous identity and whether a fresh
+Bonjour hint was deferred while the verified owner was online. Deferred hints are
+reconsidered if that owner later fails, permitting a genuine return to the former
+address. A verified replacement clears the old marker. Endpoint ownership is removed
+for any displaced identity, while its physical outage remains available for its
+own eventual recovery. Worker generations continue to fence all late events.
 
 Unassigned offline endpoints expire after fifteen minutes without rediscovery.
 Saved Indigo hosts and explicit hosts retain reconnect attempts. A powered-off
@@ -234,6 +249,21 @@ sample, stale-result fences and source isolation. Captured firmware payloads pro
 actual component/null/name shapes. Release/capture boundary tests cover successive
 beta tags and privacy/allowlist behavior. No tests were removed solely for age or
 passing consistently; the complete local suite remains a few seconds.
+
+## Focused lifecycle test review — 9 November 2026
+
+The physical recovery and finite-probe changes prompted a focused lifecycle review;
+advance notice was given before the review. Existing same-address recovery,
+communication-off, generations, swaps, overload and authentication regressions
+remain relevant and were retained. New coverage reproduces failed-old-IP to
+successful-new-IP recovery, one log per transition, unchanged Indigo IDs/names,
+quiet finite probes, old hints while online, deferred return, verified address
+reuse, protected replacements, disabled siblings and probe queue overflow.
+A real loopback WebSocket/event-loop test also moves one simulated identity between
+two endpoints, closes the former transport, verifies probe retirement, and confirms
+that a subsequent command reaches only the new endpoint. This is automated
+transport evidence; it does not claim a repeat of the owner's physical DHCP move
+using the new release.
 
 ## API references
 

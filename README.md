@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.3 beta
+# Shelly for Indigo — 0.2.4 beta
 
 Shelly for Indigo follows a simple design philosophy: small, lightweight software
 built to meet a well-defined need. It provides direct, local communication between
@@ -157,11 +157,18 @@ using its current discovered endpoint when available. An unidentified endpoint m
 need one public identity read to recognize a disabled unit; that read does not
 proceed to authentication, polling or controls for it.
 
-Physical identities survive DHCP changes. Old connection messages are fenced by
-connection generation. Vacated endpoints are probed for replacement units without
-moving the same unit back through an alternate address. Unassigned unreachable
-endpoints expire after fifteen minutes without rediscovery; configured hosts keep
-retrying. An unexpected Indigo concurrent-thread restart rebuilds communication.
+Physical identities survive DHCP changes. A verified address move produces one
+Info message with the old and new addresses and the existing Indigo devices. If
+the unit was offline, this is reported as recovery after an address change. Indigo
+IDs, names and bindings are preserved.
+
+Old connection messages are fenced by connection generation. A vacated endpoint
+gets one probe for a replacement unit; if it is unreachable, the probe retires at
+Debug level. Old Bonjour hints cannot move a healthy unit back to its former
+address. A fresh hint there is reconsidered if its current connection later fails;
+a different verified unit can reuse the address normally. Other unassigned
+unreachable endpoints expire after fifteen minutes without rediscovery; configured
+hosts keep retrying. An unexpected Indigo concurrent-thread restart rebuilds communication.
 
 Queues are bounded. A rejected UI request is logged. Event-queue overload causes a
 visible connection reset and resynchronization instead of indefinitely blocking
@@ -198,14 +205,14 @@ runtime archives; isolated source-build tooling is not a fully reproducible buil
 or a vendored-library security audit.
 
 For a release, commit and push the intended source, wait for the complete CI
-workflow, then run `python3.13 tools/release.py --tag v0.2.3-beta.1 --publish`.
-Use a new tag such as `v0.2.3-beta.2` for another beta of the same plugin version;
+workflow, then run `python3.13 tools/release.py --tag v0.2.4-beta.1 --publish`.
+Use a new tag such as `v0.2.4-beta.2` for another beta of the same plugin version;
 `--notes-file` and `--title` can override defaults. A tag without a prerelease suffix
 creates a stable release. The tool reruns checks and builds a fresh archive with a
 source-commit and SHA-256 manifest. Existing releases/assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.3-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.4-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 
