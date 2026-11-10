@@ -298,7 +298,7 @@ class IndigoTests(unittest.TestCase):
         from pathlib import Path
         from xml.etree import ElementTree
         xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/MenuItems.xml'
-        item = ElementTree.parse(xml).find('MenuItem')
+        item = ElementTree.parse(xml).find("MenuItem[@id='createDiscoveredDevices']")
         ui = item.find('ConfigUI')
         self.assertEqual(ui.find("Field[@id='includeInputs']").get('defaultValue'), 'false')
         callback = getattr(self.plugin, item.findtext('CallbackMethod'))
@@ -709,7 +709,7 @@ class IndigoTests(unittest.TestCase):
         from pathlib import Path
         from xml.etree import ElementTree
         xml = Path(support.__file__).resolve().parents[1] / 'Shelly.indigoPlugin/Contents/Server Plugin/MenuItems.xml'
-        ui = ElementTree.parse(xml).find('MenuItem/ConfigUI')
+        ui = ElementTree.parse(xml).find("MenuItem[@id='createDiscoveredDevices']/ConfigUI")
         field = ui.find("Field[@id='shellyId']/List")
         self.assertEqual(field.get('dynamicReload'), 'true')
         generate = getattr(self.plugin, field.get('method'))

@@ -209,3 +209,21 @@ Indigo creation/binding and On/Off/Toggle/brightness actions are covered with a
 strict host double and a localhost WebSocket simulator. Physical dimmer control
 through the installed plugin still needs owner validation. The focused test
 review is recorded in architecture.md; existing switch/input regressions remain.
+
+
+## Inventory report / account authorization — 10 November 2026
+
+The 0.2.6 implementation is covered by deterministic physical-history/merge tests
+and real loopback HTTP callback tests. Tests verify local/default reporting,
+persisted dates with availability re-established after restart, cloud-only Never,
+MAC/identity deduplication independent of reused IPs, cancellation, callback state,
+allowed HTTPS cloud hosts and credential-free failure reporting. Existing connection,
+worker, outage and address-change regressions are retained. Native inventory-menu
+rendering and a live account inventory response have not yet been verified.
+
+A standalone check opened the real Shelly browser sign-in page on the server Mac.
+The five-minute callback window expired without an authorization callback. No cloud
+account response or account metadata capture is claimed; no account password was
+provided to the agent or plugin. No output commands, live plugin installation or
+plugin restart were performed for this feature. The actual account sign-in remains
+the next user-assisted validation step before publication.

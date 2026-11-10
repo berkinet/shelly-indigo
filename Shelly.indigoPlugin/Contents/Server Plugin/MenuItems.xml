@@ -1,5 +1,29 @@
 <?xml version="1.0"?>
 <MenuItems>
+  <MenuItem id="logDeviceInventory">
+    <Name>Log Device Inventory…</Name>
+    <CallbackMethod>logDeviceInventory</CallbackMethod>
+    <ButtonTitle>Log Inventory</ButtonTitle>
+    <ConfigUI>
+      <Field id="inventoryScope" type="menu" defaultValue="local">
+        <Label>Include:</Label>
+        <List>
+          <Option value="local">Local LAN only</Option>
+          <Option value="cloud">Local LAN + Shelly account</Option>
+        </List>
+      </Field>
+      <Field id="inventoryHelp" type="label">
+        <Label>Refreshes local Bonjour discovery and logs one row per physical device, including known offline devices. Status and Last seen reflect local communication. Last-seen dates are retained across restarts; devices never contacted locally show Never. This is not a scan of every LAN address. Disabled communications remain disabled.</Label>
+      </Field>
+      <Field id="cloudInventoryHelp" type="label" visibleBindingId="inventoryScope" visibleBindingValue="cloud">
+        <Label>Also includes devices registered to your Shelly account. Sign in directly with Shelly in the browser on the Indigo server Mac. Complete sign-in within five minutes; the plugin keeps codes/tokens only in memory for this report. Uses Shelly’s personal/experimental OAuth client.</Label>
+      </Field>
+    </ConfigUI>
+  </MenuItem>
+  <MenuItem id="cancelDeviceInventory">
+    <Name>Cancel Inventory Report</Name>
+    <CallbackMethod>cancelDeviceInventory</CallbackMethod>
+  </MenuItem>
   <MenuItem id="createDiscoveredDevices">
     <Name>Create Indigo Devices…</Name>
     <CallbackMethod>createDiscoveredDevices</CallbackMethod>

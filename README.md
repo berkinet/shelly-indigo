@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.5 beta
+# Shelly for Indigo — 0.2.6 beta
 
 Shelly for Indigo follows a simple design philosophy: small, lightweight software
 built to meet a well-defined need. It provides direct, local communication between
@@ -131,6 +131,55 @@ UTC clock adjustments do not determine event order; connection lifetime and TCP
 receive order do. Duplicate tracking is bounded and resets with a backwards clock
 step or reconnection.
 
+## Device inventory report
+
+Choose **Plugins → Shelly → Log Device Inventory…**. **Local LAN only** is the
+default and uses no cloud account. The command browses local Shelly Bonjour
+announcements for five seconds, while normal identity-checked workers query new
+endpoints. It also includes locally remembered offline devices and existing Indigo
+bindings. This is not a sweep of every address on the subnet, and disabled
+communication stays disabled. If Bonjour is unavailable, the known inventory is
+still reported with a warning.
+
+The Event Log receives one table, sorted by IP address, with **IP Address, MAC
+Address, Name, Model, Status, Last seen** and online/offline totals. There is one
+row per physical Shelly, regardless of its number of Indigo channels. Local names
+and verified current addresses take priority. Offline IPs are last known; missing
+fields show `—`. Status describes local plugin communication. Last seen is
+**Online** for a connected device, the date/time/timezone of the last successful
+local observation when offline, or **Never** when no local observation is retained.
+The plugin saves only identity, address, MAC, local name/model and last-seen date
+in preferences, at most once per minute and when reporting/stopping. Online state
+is established anew after restart. History starts with this feature; previously
+created offline Indigo bindings can show Never until successfully observed.
+
+**Local LAN + Shelly account** additionally reads the account's current/last-known
+inventory, including devices never seen locally. It opens Shelly's own sign-in page
+in the browser on the **Indigo server Mac**. Complete sign-in there within five
+minutes; a remote Indigo client cannot use a browser on another computer for this
+loopback callback. **Cancel Inventory Report** ends a pending scan/sign-in.
+A second report cannot run until the first has completed or finished cancelling.
+
+Cloud mode is experimental and uses Shelly's documented `shelly-diy` OAuth client
+for personal account experiments. No hosted callback service or cloud account
+password in the plugin is needed. The temporary callback binds only to localhost;
+a random callback path and state bind it to that report. Requests use HTTPS and do
+not follow authenticated redirects. Codes/tokens exist only in the report thread's
+memory, are never placed in dialog fields, preferences or logs, and are discarded
+after the report/cancellation/timeout. Each cloud report asks for fresh authorization.
+The account authorization can permit more than inventory reading, but this feature
+issues only token exchange and the documented inventory read, never device controls.
+Normal discovery and control continue to operate locally during sign-in.
+
+Cloud metadata is merged by full MAC or matching physical identity, never by IP
+alone. A cloud-only device is **Offline / Never**, regardless of its cloud status.
+Cloud status does not establish local availability or advance local last-seen dates.
+Only available report fields are used; app-only names are not guaranteed in the
+inventory response. Cloud-only metadata is not persisted or used to start device
+workers, create Indigo devices, or change bindings. For wider distribution Shelly
+asks integrators to obtain their own OAuth client ID; the beta's personal-use path
+is described in [Shelly's OAuth documentation](https://shelly-api-docs.shelly.cloud/cloud-control-api/real-time-events/).
+
 ## Logging and recovery
 
 The Event Log preference offers **Info** and **Debug** and applies immediately.
@@ -219,14 +268,14 @@ runtime archives; isolated source-build tooling is not a fully reproducible buil
 or a vendored-library security audit.
 
 For a release, commit and push the intended source, wait for the complete CI
-workflow, then run `python3.13 tools/release.py --tag v0.2.5-beta.1 --publish`.
-Use a new tag such as `v0.2.5-beta.2` for another beta of the same plugin version;
+workflow, then run `python3.13 tools/release.py --tag v0.2.6-beta.1 --publish`.
+Use a new tag such as `v0.2.6-beta.2` for another beta of the same plugin version;
 `--notes-file` and `--title` can override defaults. A tag without a prerelease suffix
 creates a stable release. The tool reruns checks and builds a fresh archive with a
 source-commit and SHA-256 manifest. Existing releases/assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.5-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.6-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 

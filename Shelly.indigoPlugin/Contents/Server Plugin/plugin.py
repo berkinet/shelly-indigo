@@ -22,6 +22,7 @@ from shelly.credentials import CredentialEdits, Credentials
 from shelly.diagnostics import Diagnostics
 from shelly.discovery import Discovery
 from shelly.model import Inventory, endpoint
+from shelly.inventory_report import DeviceHistory, InventoryJob, render_report
 from shelly.worker import Worker
 
 class Plugin(indigo.PluginBase):
@@ -35,6 +36,8 @@ class Plugin(indigo.PluginBase):
         self.workers = self.connections.workers
         self.credentials = Credentials(pluginPrefs.get("password", ""), pluginPrefs.get("devicePasswords", "{}"))
         self.credential_edits = CredentialEdits()
+        self.device_history = DeviceHistory(pluginPrefs.get("deviceHistory", "{}"))
+        self.inventory_job = None
         self.outages = {}
         try:
             self.loss_notification_delay = self._notification_delay(pluginPrefs.get("lossNotificationDelay", "0"))
@@ -278,6 +281,7 @@ class Plugin(indigo.PluginBase):
             raise
 
     def _retire(self, address):
+        self.device_history.offline(address)
         worker = self.connections.retire(address)
         self.info.pop(address, None)
         self.inventory.pop(address, None)
@@ -327,6 +331,7 @@ class Plugin(indigo.PluginBase):
         self._report_outages()
         if time.monotonic() >= self._next_maintenance:
             self._prune_connections()
+            self._save_device_history()
             self._next_maintenance = time.monotonic() + 60
 
     def _prune_connections(self):
@@ -403,6 +408,10 @@ class Plugin(indigo.PluginBase):
             self.closing.set()
             self.pending_probes.clear()
             self.outages.clear()
+            if self.inventory_job is not None:
+                self.inventory_job.stop()
+                self.inventory_job.join(1)
+            self._save_device_history()
             try:
                 if discovery is not None:
                     discovery.close()
@@ -453,7 +462,30 @@ class Plugin(indigo.PluginBase):
     def _handle(self, kind, address, payload, generation=None):
         if generation is not None and not self.connections.current(address, generation):
             return
-        if kind == "notification_delay":
+        if kind == "inventory_request":
+            if payload not in ("local", "cloud"):
+                raise ValueError("Choose Local LAN only or Local LAN + Shelly account")
+            if self.inventory_job is not None and self.inventory_job.is_alive():
+                self.logger.warning("A Shelly inventory report is already in progress; finish sign-in or cancel it first")
+                return
+            self.inventory_job = InventoryJob(payload, self._emit)
+            self.inventory_job.start()
+            self.logger.info("Shelly inventory started: %s", "local LAN only" if payload == "local" else
+                             "local LAN + account; sign in in the browser on the Indigo server Mac (five-minute limit)")
+        elif kind == "inventory_cancel":
+            if self.inventory_job is not None and self.inventory_job.is_alive():
+                self.inventory_job.stop()
+                self.logger.info("Shelly inventory cancelled")
+        elif kind == "inventory_result":
+            mode, cloud = payload
+            rows = self.device_history.rows((dev.pluginProps for dev in self._devices()), cloud)
+            self.logger.info("%s", render_report(rows, "Local LAN only" if mode == "local" else "Local LAN + Shelly account"))
+            self._save_device_history()
+        elif kind == "inventory_notice":
+            self.logger.warning("Shelly inventory: %s", payload)
+        elif kind == "inventory_error":
+            self.logger.warning("Shelly inventory: %s; report not produced", payload)
+        elif kind == "notification_delay":
             self.loss_notification_delay = payload
         elif kind == "discover":
             self._connect(address, payload)
@@ -517,6 +549,7 @@ class Plugin(indigo.PluginBase):
             self.logger.info("Create Indigo devices completed: %s new devices; existing bindings preserved", created)
         elif kind == "identity" and address in self.info:
             self.info[address] = dict(payload)
+            self.device_history.observe(address, payload, online=False)
             self.catalog_service.rename(address, payload)
         elif kind == "command":
             dev_id, action, *values = payload
@@ -542,6 +575,7 @@ class Plugin(indigo.PluginBase):
                 self._suspend_identity(address, payload)
                 return
             self.catalog_service.identified(address, payload)
+            self.device_history.observe(address, payload, online=False)
         elif kind == "alias":
             # This address still serves a unit already moved to another endpoint.
             self.logger.debug("Retired alternate endpoint %s for %s", address, payload["id"])
@@ -574,6 +608,7 @@ class Plugin(indigo.PluginBase):
         elif kind in ("status", "snapshot") and address in self.info:
             self._update(address, payload, full=kind == "snapshot")
         elif kind == "event" and address in self.info:
+            self.device_history.observe(address, self.info[address])
             for event in payload.get("events", []):
                 component = event.get("component") if isinstance(event, dict) else None
                 previous = self.inventory[address].channels.get(component) if isinstance(component, str) else None
@@ -599,6 +634,7 @@ class Plugin(indigo.PluginBase):
             if address in self.inventory:
                 self.inventory[address].invalidate_buttons()
             self.catalog_service.offline(address)
+            self.device_history.offline(address)
             self._record_outage(address, identity, payload)
             for dev in self._devices():
                 if self._device_communicating(dev) and dev.pluginProps.get("host") == address:
@@ -635,6 +671,7 @@ class Plugin(indigo.PluginBase):
         dev.setErrorStateOnServer(reason)
 
     def _update(self, address, status, full=False):
+        self.device_history.observe(address, self.info[address])
         devices = list(self._devices())
         if full:
             channels, removed = self.inventory[address].replace(status)
@@ -750,6 +787,16 @@ class Plugin(indigo.PluginBase):
 
     _channel_label = staticmethod(channel_label)
 
+
+    def _save_device_history(self):
+        if self.device_history.dirty:
+            self.pluginPrefs["deviceHistory"] = self.device_history.saved()
+
+    def logDeviceInventory(self, valuesDict=None, typeId=""):
+        return self._emit("inventory_request", "", (valuesDict or {}).get("inventoryScope", "local"))
+
+    def cancelDeviceInventory(self, valuesDict=None, typeId=""):
+        return self._emit("inventory_cancel", "", None)
 
     def getDiscoveredShellyDevices(self, filter="", valuesDict=None, typeId="", targetId=0):
         options = self.catalog_service.device_choices()

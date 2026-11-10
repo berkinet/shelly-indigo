@@ -41,6 +41,8 @@ provisioned onto the LAN.
 | --- | --- |
 | `plugin.py` | Indigo lifecycle, thin native callbacks, channel publication and explicit creation |
 | `bindings.py` | Pure physical/channel binding and display helpers |
+| `inventory_report.py` | Adapter-owned physical history, whitelisted cloud merge, formatted reports and one bounded background scan |
+| `cloud_inventory.py` | On-demand localhost OAuth callback and fixed HTTPS account-inventory reads; no persistent tokens |
 | `catalog.py` | Locked discovery/channel catalog, lifecycle updates and detached dialog snapshots |
 | `dialogs.py` | Selection, duplicate validation and staged password UI, through injected host interfaces |
 | `buttons.py` | Locked native button subscriptions, validation and condition-aware dispatch |
@@ -281,6 +283,45 @@ two endpoints, closes the former transport, verifies probe retirement, and confi
 that a subsequent command reaches only the new endpoint. This is automated
 transport evidence; it does not claim a repeat of the owner's physical DHCP move
 using the new release.
+
+## Inventory reporting and account authorization
+
+`DeviceHistory` belongs to the adapter loop. Verified identification records local
+contact and metadata; ready/status/event messages mark the unit online and advance
+last-seen time. Offline/retirement removes online state without replacing its date.
+Records follow physical identity across IP changes and are serialized through an
+explicit metadata whitelist to `deviceHistory`, never with online flags or cloud
+responses. Periodic maintenance, report completion and shutdown flush dirty history.
+Restart does not infer availability from a saved timestamp. Pre-feature bindings
+are included with Never when there is no retained local observation.
+
+The menu queues a request; one `InventoryJob` browses Bonjour for five seconds and
+optionally performs browser authorization/cloud reads. It emits only whitelisted
+report rows or fixed credential-free messages. The existing adapter verifies newly
+announced endpoints and enforces communication policy. Neither discovery nor cloud
+metadata operates an output. Reports merge on full MAC/physical ID, never reused IPs.
+Only the adapter formats/logs the final table and touches Indigo preferences.
+
+The OAuth listener is temporary, bound to 127.0.0.1 on a random port with a random
+path and state. Callback bodies/request lines are bounded, connections time out,
+access/error logging is suppressed and responses disable caching/referrers. The
+listener ends on completion, denial, cancellation or five-minute timeout. JWT
+claims are parsed only to find the designated cloud server; they are not accepted
+as cryptographic proof. Routing is restricted to HTTPS `*.shelly.cloud` hostnames
+with no credentials, path/query or nonstandard port. HTTPS validation remains on;
+redirects are refused so tokens cannot follow a Location to another destination.
+Only `/oauth/auth` (exchange) and `/device/all_status?show_info=true&no_shared=true`
+(read) are called. Network responses are bounded and failures never include URLs,
+response bodies or exceptions containing codes/tokens. No token refresh/caching,
+credential storage changes, new dependencies or hosted web service are introduced.
+
+The focused review for this feature retained connection/recovery regressions and
+updated creation-menu selectors to use their command ID rather than menu position.
+New regressions cover persistence, identity merges/address reuse, cloud-only Never,
+status independent of cloud, optional scans, single-job admission/cancellation,
+callback state/path validation, host restrictions, expiry and credential redaction.
+Real-account authorization and native dialog evidence are recorded separately from
+the loopback/simulated test evidence.
 
 ## API references
 
