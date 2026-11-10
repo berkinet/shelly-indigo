@@ -156,6 +156,39 @@ class InventoryAdapterTests(unittest.TestCase):
             self.plugin._handle('inventory_result', '', ('local', []))
         self.assertIn('1 online, 0 offline', logs.output[0])
 
+    def test_report_includes_current_indigo_names_for_all_channels_and_leaves_unassigned_blank(self):
+        self.host.info.update(mac='020000000001', name='Local Shelly name')
+        self.plugin._handle('ready', self.host.address, (self.host.info, self.host.status))
+        self.host.devices[1].name = 'Relay alias'
+        self.host.devices[2].name = 'Input alias'
+        self.host.devices[2].enabled = False
+        self.plugin._handle('offline', self.host.address, 'No answer')
+        cloud = [
+            {'id': 'cloud:020000000001', 'cloud_id': '020000000001', 'mac': '020000000001'},
+            {'id': 'cloud:020000000002', 'cloud_id': '020000000002', 'host': '192.0.2.20', 'name': 'Unassigned'},
+        ]
+        def report():
+            with self.assertLogs('test-plugin', level='INFO') as logs:
+                self.plugin._handle('inventory_result', '', ('cloud', cloud))
+            return logs.records[0].getMessage()
+        message = report()
+        lines = message.splitlines()
+        columns = [value.strip() for value in lines[1].split('|')]
+        self.assertEqual(columns[columns.index('Name') + 1], 'Indigo device name')
+        rows = [[value.strip() for value in line.split('|')] for line in lines[2:-1]]
+        named = next(row for row in rows if row[columns.index('Name')] == 'Local Shelly name')
+        unassigned = next(row for row in rows if row[columns.index('Name')] == 'Unassigned')
+        self.assertEqual(named[columns.index('Indigo device name')], 'Input alias; Relay alias')
+        self.assertEqual(named[columns.index('Status')], 'Offline')
+        self.assertEqual(unassigned[columns.index('Indigo device name')], '—')
+        self.assertIn('2 physical devices:', message)
+        self.host.devices[1].name = 'Renamed relay'
+        renamed = report()
+        self.assertIn('Input alias; Renamed relay', renamed)
+        self.assertNotIn('Relay alias', renamed)
+        self.assertNotIn('Input alias', self.plugin.pluginPrefs['deviceHistory'])
+        self.assertNotIn('Renamed relay', self.plugin.pluginPrefs['deviceHistory'])
+
     def test_existing_bindings_without_any_new_runtime_observation_are_never_seen(self):
         self.plugin.device_history = DeviceHistory()
         with self.assertLogs('test-plugin', level='INFO') as logs:

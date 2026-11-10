@@ -303,6 +303,10 @@ The existing adapter verifies newly
 announced endpoints and enforces communication policy. Neither discovery nor cloud
 metadata operates an output. Reports merge on full MAC/physical ID, never reused IPs.
 Only the adapter formats/logs the final table and touches Indigo preferences.
+Current Indigo device names are attached to the report snapshot by physical binding,
+including disabled channels. They are sorted/deduplicated within each physical row,
+kept separate from the Shelly name and never stored in device history. Renaming an
+Indigo device therefore changes the next report without a plugin restart.
 
 The OAuth listener is temporary, bound to 127.0.0.1 on a random port with a random
 path and state. Callback bodies/request lines are bounded, connections time out,

@@ -491,7 +491,8 @@ class Plugin(indigo.PluginBase):
                 self.logger.info("Shelly inventory cancelled")
         elif kind == "inventory_result":
             mode, cloud = payload
-            rows = self.device_history.rows((dev.pluginProps for dev in self._devices()), cloud)
+            bindings = ({**dev.pluginProps, "indigoName": dev.name} for dev in self._devices())
+            rows = self.device_history.rows(bindings, cloud)
             self.logger.info("%s", render_report(rows, "Local LAN only" if mode == "local" else "Local LAN + Shelly account"))
             self._save_device_history()
         elif kind == "inventory_notice":

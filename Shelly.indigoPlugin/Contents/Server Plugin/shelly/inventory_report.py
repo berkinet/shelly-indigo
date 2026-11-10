@@ -116,11 +116,15 @@ class DeviceHistory:
 
     def rows(self, bindings=(), cloud=()):
         records = deepcopy(self.records)
+        indigo_names = {}
         for props in bindings:
             identity = text(props.get("shellyId"))
             if identity and identity not in records:
                 records[identity] = {"id": identity, "host": text(props.get("host")),
                                      "model": text(props.get("model")), "last_seen": None}
+            name = text(props.get("indigoName"))
+            if identity and name:
+                indigo_names.setdefault(identity, set()).add(name)
         # Match full MACs first. A full cloud Wi-Fi ID can also match an observed
         # MAC or the suffix of a verified local ID, without inventing a MAC value.
         by_mac = {record["mac"]: identity for identity, record in records.items() if record.get("mac")}
@@ -143,7 +147,9 @@ class DeviceHistory:
                 by_cloud_id[cloud_id] = match
             if item.get("mac"):
                 by_mac[item["mac"]] = match
-        return [{**record, "online": identity in self.online} for identity, record in records.items()]
+        return [{**record, "online": identity in self.online,
+                 "indigo_names": sorted(indigo_names.get(identity, ()), key=str.casefold)}
+                for identity, record in records.items()]
 
 
 def render_report(rows, scope):
@@ -163,8 +169,9 @@ def render_report(rows, scope):
         online = row.get("online", False)
         table.append([host_address(row.get("host", "")) or "—", mac,
                       text(row.get("name")) or row["id"].removeprefix("cloud:"),
+                      "; ".join(text(name) for name in row.get("indigo_names", ()) if text(name)) or "—",
                       text(row.get("model")) or "—", "Online" if online else "Offline", "Online" if online else last])
-    headers = ["IP Address", "MAC Address", "Name", "Model", "Status", "Last seen"]
+    headers = ["IP Address", "MAC Address", "Name", "Indigo device name", "Model", "Status", "Last seen"]
     widths = [max(len(values[i]) for values in [headers] + table) for i in range(len(headers))]
     lines = [" | ".join(value.ljust(widths[i]) for i, value in enumerate(values)) for values in [headers] + table]
     online = sum(bool(row.get("online")) for row in rows)

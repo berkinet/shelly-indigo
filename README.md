@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.6 beta
+# Shelly for Indigo — 0.2.7 beta
 
 Shelly for Indigo follows a simple design philosophy: small, lightweight software
 built to meet a well-defined need. It provides direct, local communication between
@@ -142,9 +142,14 @@ communication stays disabled. If Bonjour is unavailable, the known inventory is
 still reported with a warning.
 
 The Event Log receives one table, sorted by IP address, with **IP Address, MAC
-Address, Name, Model, Status, Last seen** and online/offline totals. There is one
-row per physical Shelly, regardless of its number of Indigo channels. Local names
-and verified current addresses take priority. Offline IPs are last known; missing
+Address, Name, Indigo device name, Model, Status, Last seen** and online/offline
+totals. There is one row per physical Shelly, regardless of its number of Indigo
+channels. The Indigo
+device name column lists all currently assigned Indigo names, separated by semicolons,
+including offline or disabled channels; unassigned devices show `—`. Names are read
+fresh for each report, so Indigo renames appear immediately without changing the
+Shelly name or saved device history. Local names and verified current addresses
+take priority. Offline IPs are last known; missing
 fields show `—`. Status describes local plugin communication. Last seen is
 **Online** for a connected device, the date/time/timezone of the last successful
 local observation when offline, or **Never** when no local observation is retained.
@@ -268,14 +273,14 @@ runtime archives; isolated source-build tooling is not a fully reproducible buil
 or a vendored-library security audit.
 
 For a release, commit and push the intended source, wait for the complete CI
-workflow, then run `python3.13 tools/release.py --tag v0.2.6-beta.1 --publish`.
-Use a new tag such as `v0.2.6-beta.2` for another beta of the same plugin version;
+workflow, then run `python3.13 tools/release.py --tag v0.2.7-beta.1 --publish`.
+Use a new tag such as `v0.2.7-beta.2` for another beta of the same plugin version;
 `--notes-file` and `--title` can override defaults. A tag without a prerelease suffix
 creates a stable release. The tool reruns checks and builds a fresh archive with a
 source-commit and SHA-256 manifest. Existing releases/assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.6-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.7-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 
