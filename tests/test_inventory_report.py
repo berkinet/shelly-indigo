@@ -47,7 +47,7 @@ class InventoryReportTests(unittest.TestCase):
     def test_cloud_only_and_never_contacted_bindings_are_offline_never_and_do_not_persist_cloud_data(self):
         history = DeviceHistory()
         response = {'data': {'devices_status': {'unreliable-map-key': {
-            '_dev_info': {'id': '020000000002', 'code': 'S3SW-001P8EU', 'online': True, 'name': ['Patio']},
+            '_dev_info': {'id': '020000000002', 'code': 'S3SW-001P8EU', 'gen': 'G2', 'online': True},
             'sys': {'mac': '020000000002'}, 'wifi': {'sta_ip': '192.0.2.9', 'ssid': 'DO NOT RETAIN'},
             'secret': 'DO NOT RETAIN'}}}}
         cloud = cloud_rows(response)
@@ -56,6 +56,7 @@ class InventoryReportTests(unittest.TestCase):
         self.assertEqual(len(rows), 2)
         self.assertEqual(report.count('Never'), 2)
         self.assertIn('02:00:00:00:00:02', report)
+        self.assertIn('020000000002', report)  # Assigned names are optional in the documented API.
         self.assertIn('0 online, 2 offline', report)
         self.assertLess(report.index('192.0.2.9'), report.index('192.0.2.20'))
         self.assertNotIn('DO NOT RETAIN', str(cloud))

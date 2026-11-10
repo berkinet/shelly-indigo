@@ -219,11 +219,9 @@ persisted dates with availability re-established after restart, cloud-only Never
 MAC/identity deduplication independent of reused IPs, cancellation, callback state,
 allowed HTTPS cloud hosts and credential-free failure reporting. Existing connection,
 worker, outage and address-change regressions are retained. Native inventory-menu
-rendering and a live account inventory response have not yet been verified.
+rendering has not yet been verified. No output commands, live plugin installation
+or plugin restart are claimed for this feature.
 
-A standalone check opened the real Shelly browser sign-in page on the server Mac.
-The five-minute callback window expired without an authorization callback. No cloud
-account response or account metadata capture is claimed; no account password was
-provided to the agent or plugin. No output commands, live plugin installation or
-plugin restart were performed for this feature. The actual account sign-in remains
-the next user-assisted validation step before publication.
+Account-derived validation details and inventory data are intentionally excluded
+from the public repository. The API schema examples are synthetic and follow the
+published Shelly documentation; they do not expose an owner's devices or account.

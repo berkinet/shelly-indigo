@@ -25,8 +25,9 @@ start workers from cloud metadata or create Indigo bindings. Existing local devi
 password handling remains unchanged.
 
 Focused regression, source/archive bundle and Ubuntu/macOS CI checks gate release.
-The initial real browser check timed out without a callback; account authorization
-and native menu rendering remain pending user-assisted validation. This release
-is prepared but has not yet been published.
+The OAuth callback and inventory behavior have automated regression coverage.
+Assigned names are optional in the documented response; local names and identity
+fallbacks remain available. Native menu rendering remains unverified. Account
+inventory data is excluded from public validation notes.
 Requires Indigo 2026.1/API 3.9. Install the archive to activate this update; building
 and publishing do not install or restart the live plugin.
