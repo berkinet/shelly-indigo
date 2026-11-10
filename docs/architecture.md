@@ -297,7 +297,9 @@ are included with Never when there is no retained local observation.
 
 The menu queues a request; one `InventoryJob` browses Bonjour for five seconds and
 optionally performs browser authorization/cloud reads. It emits only whitelisted
-report rows or fixed credential-free messages. The existing adapter verifies newly
+report rows or fixed credential-free messages. A request generation fences queued
+results after cancellation, a replacement report or concurrent-thread restart.
+The existing adapter verifies newly
 announced endpoints and enforces communication policy. Neither discovery nor cloud
 metadata operates an output. Reports merge on full MAC/physical ID, never reused IPs.
 Only the adapter formats/logs the final table and touches Indigo preferences.

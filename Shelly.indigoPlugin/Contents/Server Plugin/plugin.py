@@ -38,6 +38,7 @@ class Plugin(indigo.PluginBase):
         self.credential_edits = CredentialEdits()
         self.device_history = DeviceHistory(pluginPrefs.get("deviceHistory", "{}"))
         self.inventory_job = None
+        self.inventory_request = 0
         self.outages = {}
         try:
             self.loss_notification_delay = self._notification_delay(pluginPrefs.get("lossNotificationDelay", "0"))
@@ -408,6 +409,7 @@ class Plugin(indigo.PluginBase):
             self.closing.set()
             self.pending_probes.clear()
             self.outages.clear()
+            self.inventory_request += 1
             if self.inventory_job is not None:
                 self.inventory_job.stop()
                 self.inventory_job.join(1)
@@ -462,17 +464,28 @@ class Plugin(indigo.PluginBase):
     def _handle(self, kind, address, payload, generation=None):
         if generation is not None and not self.connections.current(address, generation):
             return
-        if kind == "inventory_request":
+        if kind == "inventory_delivery":
+            request, delivered_kind, delivered_payload = payload
+            if request == self.inventory_request:
+                self._handle(delivered_kind, address, delivered_payload)
+        elif kind == "inventory_request":
             if payload not in ("local", "cloud"):
                 raise ValueError("Choose Local LAN only or Local LAN + Shelly account")
             if self.inventory_job is not None and self.inventory_job.is_alive():
                 self.logger.warning("A Shelly inventory report is already in progress; finish sign-in or cancel it first")
                 return
-            self.inventory_job = InventoryJob(payload, self._emit)
+            self.inventory_request += 1
+            request = self.inventory_request
+            def deliver(kind, address, result=None):
+                if kind.startswith("inventory_"):
+                    return self._emit("inventory_delivery", address, (request, kind, result))
+                return self._emit(kind, address, result)
+            self.inventory_job = InventoryJob(payload, deliver)
             self.inventory_job.start()
             self.logger.info("Shelly inventory started: %s", "local LAN only" if payload == "local" else
                              "local LAN + account; sign in in the browser on the Indigo server Mac (five-minute limit)")
         elif kind == "inventory_cancel":
+            self.inventory_request += 1
             if self.inventory_job is not None and self.inventory_job.is_alive():
                 self.inventory_job.stop()
                 self.logger.info("Shelly inventory cancelled")

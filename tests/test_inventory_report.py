@@ -120,13 +120,26 @@ class InventoryAdapterTests(unittest.TestCase):
         with patch('plugin.InventoryJob') as factory:
             self.assertTrue(self.plugin.logDeviceInventory())
             self.plugin._process_events()
-            factory.assert_called_once_with('local', self.plugin._emit)
+            factory.assert_called_once()
+            self.assertEqual(factory.call_args.args[0], 'local')
             factory.return_value.start.assert_called_once()
             with self.assertLogs('test-plugin', level='WARNING'):
                 self.plugin._handle('inventory_request', '', 'cloud')
             self.plugin.cancelDeviceInventory()
             self.plugin._process_events()
             factory.return_value.stop.assert_called_once()
+
+    def test_cancel_fences_a_result_already_queued_behind_the_cancel_request(self):
+        with patch('plugin.InventoryJob') as factory:
+            self.plugin.logDeviceInventory()
+            self.plugin._process_events()
+            deliver = factory.call_args.args[1]
+            self.plugin.cancelDeviceInventory()
+            deliver('inventory_result', '', ('local', []))
+            with self.assertLogs('test-plugin', level='INFO') as logs:
+                self.plugin._process_events()
+            self.assertTrue(any('cancelled' in message for message in logs.output))
+            self.assertFalse(any('physical devices:' in message for message in logs.output))
 
     def test_report_updates_after_recovery_and_restart_keeps_last_seen_without_fabricating_a_date(self):
         self.plugin._handle('offline', self.host.address, 'No answer')
