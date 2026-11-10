@@ -12,6 +12,16 @@ class VacatedEndpoint:
     rediscovered: bool = False
 
 
+@dataclass
+class Outage:
+    """One continuous outage; notification timing belongs to the adapter loop."""
+    address: str
+    identity: str | None
+    reason: str
+    started: float
+    reported_reason: str | None = None
+
+
 class Connections:
     def __init__(self):
         self.workers = {}

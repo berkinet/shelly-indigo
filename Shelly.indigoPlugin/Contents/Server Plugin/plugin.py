@@ -17,7 +17,7 @@ from shelly.bindings import expected_device_type, selection_key, channel_propert
 from shelly.catalog import Catalog, ALL_DEVICES
 from shelly.dialogs import DeviceDialogs
 from shelly.buttons import ButtonEvents
-from shelly.connections import CommunicationPolicy, Connections
+from shelly.connections import CommunicationPolicy, Connections, Outage
 from shelly.credentials import CredentialEdits, Credentials
 from shelly.diagnostics import Diagnostics
 from shelly.discovery import Discovery
@@ -36,6 +36,10 @@ class Plugin(indigo.PluginBase):
         self.credentials = Credentials(pluginPrefs.get("password", ""), pluginPrefs.get("devicePasswords", "{}"))
         self.credential_edits = CredentialEdits()
         self.outages = {}
+        try:
+            self.loss_notification_delay = self._notification_delay(pluginPrefs.get("lossNotificationDelay", "0"))
+        except ValueError:
+            self.loss_notification_delay = 0
         self.overflows = set()
         self.pending_probes = {}
         self.overflow_lock = threading.Lock()
@@ -124,7 +128,10 @@ class Plugin(indigo.PluginBase):
         return not matches or any(self._device_communicating(dev) for dev in matches)
 
     def _connection_log_context(self, address, identity=None, info=None):
-        info = info or self.info.get(address) or self.catalog_service.get_device(identity)
+        if not info:
+            info = self.info.get(address)
+            if not info or (identity and info.get("id") != identity):
+                info = self.catalog_service.get_device(identity)
         identity = info.get("id") or identity
         label = f"{self._device_label({**info, 'id': identity})} at {address}" if identity else f"at {address}"
         matches = self._communication_bindings(address, identity)
@@ -146,6 +153,46 @@ class Plugin(indigo.PluginBase):
     def _clear_outage(self, address, identity=None):
         self.outages.pop(self._outage_key(address, identity), None)
         self.outages.pop(self._outage_key(address), None)
+
+    @staticmethod
+    def _notification_delay(value):
+        text = str(value).strip()
+        if not text.isascii() or not text.isdecimal() or len(text) > 5 or int(text) > 86400:
+            raise ValueError("Enter a whole number of seconds from 0 to 86400 (0 logs immediately).")
+        return int(text)
+
+    def _record_outage(self, address, identity, reason):
+        key = self._outage_key(address, identity)
+        outage = self.outages.get(key)
+        if outage is None:
+            # Identification may succeed between two failed connection attempts.
+            outage = self.outages.pop(self._outage_key(address), None) if identity else None
+            if outage is None:
+                outage = Outage(address, identity, reason, time.monotonic())
+            self.outages[key] = outage
+        outage.address, outage.identity, outage.reason = address, identity, reason
+        if outage.reported_reason is not None:
+            label, context = self._connection_log_context(address, identity)
+            if outage.reported_reason != reason:
+                self.logger.warning("Shelly %s unavailable; %s: %s", label, context, reason)
+                outage.reported_reason = reason
+            else:
+                self.logger.debug("Shelly %s still unavailable; %s: %s", label, context, reason)
+        else:
+            self._report_outages()
+
+    def _report_outages(self):
+        # Run every event-loop turn: expiration must not wait for another retry.
+        now = time.monotonic()
+        for key, outage in list(self.outages.items()):
+            if outage.reported_reason is not None or now - outage.started < self.loss_notification_delay:
+                continue
+            if not self._communication_allowed(outage.address, outage.identity):
+                self.outages.pop(key, None)
+                continue
+            label, context = self._connection_log_context(outage.address, outage.identity)
+            self.logger.warning("Shelly %s unavailable; %s: %s", label, context, outage.reason)
+            outage.reported_reason = outage.reason
 
     def _pause(self, address):
         # Preserve offline selector entries so another channel can be explicitly
@@ -277,6 +324,7 @@ class Plugin(indigo.PluginBase):
         for address, excluded in probes.items():
             if address not in self.workers:
                 self._connect(address, exclude_id=excluded)
+        self._report_outages()
         if time.monotonic() >= self._next_maintenance:
             self._prune_connections()
             self._next_maintenance = time.monotonic() + 60
@@ -354,6 +402,7 @@ class Plugin(indigo.PluginBase):
         finally:
             self.closing.set()
             self.pending_probes.clear()
+            self.outages.clear()
             try:
                 if discovery is not None:
                     discovery.close()
@@ -374,8 +423,9 @@ class Plugin(indigo.PluginBase):
             saved = {endpoint(dev.pluginProps["host"]) for dev in self._communication_bindings("", info["id"])
                      if dev.pluginProps.get("host")}
             previous = next(iter(saved)) if len(saved) == 1 else None
-        recovering = (self._outage_key(address, info["id"]) in self.outages
-                      or self._outage_key(address) in self.outages)
+        recovering = any(outage is not None and outage.reported_reason is not None
+                         for key in (self._outage_key(address, info["id"]), self._outage_key(address))
+                         for outage in (self.outages.get(key),))
         obsolete = set(self.connections.claim(info["id"], address))
         obsolete.update(host for host, item in self.info.items() if host != address and item["id"] == info["id"])
         if previous and previous != address:
@@ -403,7 +453,9 @@ class Plugin(indigo.PluginBase):
     def _handle(self, kind, address, payload, generation=None):
         if generation is not None and not self.connections.current(address, generation):
             return
-        if kind == "discover":
+        if kind == "notification_delay":
+            self.loss_notification_delay = payload
+        elif kind == "discover":
             self._connect(address, payload)
         elif kind == "bonjour":
             self._connect(address, hint_id=payload)
@@ -547,13 +599,7 @@ class Plugin(indigo.PluginBase):
             if address in self.inventory:
                 self.inventory[address].invalidate_buttons()
             self.catalog_service.offline(address)
-            label, context = self._connection_log_context(address, identity)
-            outage_key = self._outage_key(address, identity)
-            if self.outages.get(outage_key) != payload:
-                self.logger.warning("Shelly %s unavailable; %s: %s", label, context, payload)
-                self.outages[outage_key] = payload
-            else:
-                self.logger.debug("Shelly %s still unavailable; %s: %s", label, context, payload)
+            self._record_outage(address, identity, payload)
             for dev in self._devices():
                 if self._device_communicating(dev) and dev.pluginProps.get("host") == address:
                     if self._block_invalid_binding(dev):
@@ -822,6 +868,10 @@ class Plugin(indigo.PluginBase):
         if valuesDict.get("logLevel", "INFO") not in ("INFO", "DEBUG"):
             return False, valuesDict, indigo.Dict({"logLevel": "Choose Info or Debug."})
         try:
+            self._notification_delay(valuesDict.get("lossNotificationDelay", "0"))
+        except ValueError as exc:
+            return False, valuesDict, indigo.Dict({"lossNotificationDelay": str(exc)})
+        try:
             for host in valuesDict.get("hosts", "").split(","):
                 if host.strip():
                     endpoint(host.strip())
@@ -832,6 +882,7 @@ class Plugin(indigo.PluginBase):
     def closedPrefsConfigUi(self, valuesDict, userCancelled):
         if not userCancelled:
             self._configure_logging(valuesDict.get("logLevel", "INFO"))
+            self._emit("notification_delay", "", self._notification_delay(valuesDict.get("lossNotificationDelay", "0")))
             if any(valuesDict.get(key, original) != original
                    for key, original in self.connection_preferences.items()):
                 self.logger.info("Restart the Shelly plugin to apply connection preferences")

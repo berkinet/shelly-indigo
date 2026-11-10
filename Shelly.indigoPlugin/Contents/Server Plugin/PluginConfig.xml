@@ -16,7 +16,11 @@
     </List>
     <Description>Info shows normal activity, warnings and errors. Debug also shows discovery and query messages. Applies immediately; the plugin log file always includes Debug.</Description>
   </Field>
+  <Field id="lossNotificationDelay" type="textfield" defaultValue="0">
+    <Label>Lost device notification delay (seconds):</Label>
+    <Description>Wait 0–86400 seconds after detecting a failure before logging it. Recovery within this period suppresses both loss and recovery messages. 0 logs immediately. Offline states update immediately. Applies without restarting.</Description>
+  </Field>
   <Field id="notice" type="label">
-    <Label>Beta: switches, dimmers, binary/button inputs and output metering. Set local passwords in each device’s configuration. Restart after changing connection preferences. Log level changes apply immediately.</Label>
+    <Label>Beta: switches, dimmers, binary/button inputs and output metering. Set local passwords in each device’s configuration. Restart after changing connection preferences. Logging preferences apply immediately.</Label>
   </Field>
 </PluginConfig>

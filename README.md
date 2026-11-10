@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.4 beta
+# Shelly for Indigo — 0.2.5 beta
 
 Shelly for Indigo follows a simple design philosophy: small, lightweight software
 built to meet a well-defined need. It provides direct, local communication between
@@ -141,6 +141,20 @@ its address, and the active Indigo device names and IDs. An unassigned discovere
 unit explicitly says **no Indigo devices assigned**. Before its identity has been
 read, the log uses its address without inventing a device name. Repeated identical
 failures retain this context at Debug level.
+
+**Lost device notification delay (seconds)** waits after the first detected failure
+before logging a loss. Choose a whole number from **0 to 86400**; **0** preserves
+immediate logging and is the default. For example, **60** suppresses both the warning
+and recovery message for a device that reconnects within a minute of detection, in
+both the Event Log and plugin file log. Indigo's offline/error states still update
+immediately. The delay begins after failure detection, not at the physical loss of
+power or network access. Retries and changing failure reasons do not restart it.
+If the device stays offline, one warning reports the latest failure when the delay
+expires; subsequent reason changes, repeated failures and recovery follow the
+usual logging rules. Address changes continue to be reported independently.
+Saving this setting applies it without restarting, including to pending outages;
+once a loss has been logged, its eventual recovery is still logged.
+
 Restart after changing discovery or additional-host preferences.
 Per-device password changes reconnect that unit when communication is enabled;
 saving a password never enables disabled communications.
@@ -205,14 +219,14 @@ runtime archives; isolated source-build tooling is not a fully reproducible buil
 or a vendored-library security audit.
 
 For a release, commit and push the intended source, wait for the complete CI
-workflow, then run `python3.13 tools/release.py --tag v0.2.4-beta.1 --publish`.
-Use a new tag such as `v0.2.4-beta.2` for another beta of the same plugin version;
+workflow, then run `python3.13 tools/release.py --tag v0.2.5-beta.1 --publish`.
+Use a new tag such as `v0.2.5-beta.2` for another beta of the same plugin version;
 `--notes-file` and `--title` can override defaults. A tag without a prerelease suffix
 creates a stable release. The tool reruns checks and builds a fresh archive with a
 source-commit and SHA-256 manifest. Existing releases/assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.4-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.5-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 

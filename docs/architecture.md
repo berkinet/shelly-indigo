@@ -76,7 +76,8 @@ addresses, including workers that never completed setup. Inventories, component
 summaries and catalogs for retired endpoints are removed. Last verified physical
 addresses survive worker retirement, while outage deduplication uses physical ID
 (or endpoint only until identity is known). A ready transition logs one address
-change, or recovery after an address change, before clearing that unit's outage.
+change, or recovery after an address change when its loss was reported, before
+clearing that unit's outage.
 The previous saved Indigo address is a fallback on the first connection after startup.
 
 Old endpoints are probed once for different units so an earlier Bonjour update is
@@ -93,9 +94,25 @@ address. A verified replacement clears the old marker. Endpoint ownership is rem
 for any displaced identity, while its physical outage remains available for its
 own eventual recovery. Worker generations continue to fence all late events.
 
+The adapter owns a small outage record with first-failure monotonic time, latest
+reason/address/identity and the last reported reason. `lossNotificationDelay` is a
+validated integer number of seconds (0–86400, default 0). Saved changes are queued
+to the adapter, so the UI thread never mutates pending outages. Each event-loop
+turn checks deadlines after processing device messages; it does not depend on
+retries or the sixty-second maintenance interval. Repeated failures do not reset
+the deadline. Pending outages produce no loss/recovery log records, including at
+Debug, if the unit returns before reporting. Reported outages retain normal reason
+deduplication and one recovery. Offline states and command admission are immediate.
+An endpoint-only outage adopts a subsequently verified physical identity without
+restarting its grace period. Disable, stale-endpoint pruning and shutdown clear pending
+records; IP moves preserve physical identity, while healthy address changes remain
+visible. New timing regressions use an explicit clock and the real adapter loop;
+existing transport, address-swap, communication and logging regressions are retained.
+
 Unassigned offline endpoints expire after fifteen minutes without rediscovery.
 Saved Indigo hosts and explicit hosts retain reconnect attempts. A powered-off
-configured unit logs its first failure, changes in failure reason and recovery;
+configured unit logs its first failure after the configured delay, then changes
+in failure reason and recovery;
 unchanged repeated failures use Debug. Outage, repeat and recovery messages identify
 the physical unit using its known local name/ID and address, then list active Indigo
 bindings or explicitly state that no Indigo devices are assigned. Before the first
