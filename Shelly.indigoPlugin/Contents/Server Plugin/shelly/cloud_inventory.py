@@ -103,13 +103,15 @@ def authorize(stopped, *, browser=None, timeout=300):
                 result["code"] = codes[0]
             else:
                 result["error"] = True
-            body = ("<!doctype html><title>Shelly inventory</title><p>Authorization received. "
-                    "Return to Indigo; the inventory result will appear in its Event Log.</p>").encode()
+            nonce = secrets.token_urlsafe(24)
+            body = ("<!doctype html><title>Shelly inventory</title>"
+                    f'<script nonce="{nonce}">history.replaceState(null,"","/complete");</script>'
+                    "<p>Authorization received. Return to Indigo; the inventory result will appear in its Event Log.</p>").encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
             self.send_header("Referrer-Policy", "no-referrer")
-            self.send_header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+            self.send_header("Content-Security-Policy", f"default-src 'none'; script-src 'nonce-{nonce}'; frame-ancestors 'none'")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)

@@ -304,8 +304,9 @@ Only the adapter formats/logs the final table and touches Indigo preferences.
 
 The OAuth listener is temporary, bound to 127.0.0.1 on a random port with a random
 path and state. Callback bodies/request lines are bounded, connections time out,
-access/error logging is suppressed and responses disable caching/referrers. The
-listener ends on completion, denial, cancellation or five-minute timeout. JWT
+access/error logging is suppressed and responses disable caching/referrers. A
+nonce-authorized script clears the callback query from the browser history entry.
+The listener ends on completion, denial, cancellation or five-minute timeout. JWT
 claims are parsed only to find the designated cloud server; they are not accepted
 as cryptographic proof. Routing is restricted to HTTPS `*.shelly.cloud` hostnames
 with no credentials, path/query or nonstandard port. HTTPS validation remains on;

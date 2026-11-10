@@ -35,7 +35,10 @@ class CloudInventoryTests(unittest.TestCase):
                         self.assertEqual(exc.code, 400)
                     with urlopen(target + '?' + urlencode({'code': 'SECRET', 'state': params['state'][0]}), timeout=2) as response:
                         self.assertEqual(response.headers['Cache-Control'], 'no-store')
-                        self.assertNotIn('SECRET', response.read().decode())
+                        body = response.read().decode()
+                        self.assertNotIn('SECRET', body)
+                        self.assertIn('history.replaceState', body)
+                        self.assertIn("script-src 'nonce-", response.headers['Content-Security-Policy'])
                     results.put(None)
                 except BaseException as exc:
                     results.put(exc)
