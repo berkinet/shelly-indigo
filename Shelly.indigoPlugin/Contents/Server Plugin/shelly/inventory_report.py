@@ -167,7 +167,7 @@ def render_report(rows, scope):
         except (ValueError, OverflowError, OSError):
             last = "Never"
         online = row.get("online", False)
-        table.append([host_address(row.get("host", "")) or "—", mac,
+        table.append([(host_address(row.get("host", "")) or "—") if online else "", mac,
                       text(row.get("name")) or row["id"].removeprefix("cloud:"),
                       "; ".join(text(name) for name in row.get("indigo_names", ()) if text(name)) or "—",
                       text(row.get("model")) or "—", "Online" if online else "Offline", "Online" if online else last])
@@ -177,7 +177,7 @@ def render_report(rows, scope):
     online = sum(bool(row.get("online")) for row in rows)
     return (f"Shelly device inventory — {scope}\n" + "\n".join(lines)
             + f"\n{len(rows)} physical devices: {online} online, {len(rows) - online} offline. "
-              "Status and Last seen reflect local plugin communication; offline addresses are last known.")
+              "Status and Last seen reflect local plugin communication; IP addresses are shown only for online devices.")
 
 
 class InventoryJob(threading.Thread):

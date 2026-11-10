@@ -19,6 +19,7 @@ class InventoryReportTests(unittest.TestCase):
         with patch('shelly.inventory_report.time.time', return_value=1700000000):
             history.observe('192.0.2.10:80', self.info)
         self.assertEqual(history.rows()[0]['online'], True)
+        self.assertIn('192.0.2.10', render_report(history.rows(), 'Local LAN only'))
         saved = history.saved()
         restored = DeviceHistory(saved)
         row = restored.rows()[0]
@@ -27,6 +28,8 @@ class InventoryReportTests(unittest.TestCase):
         report = render_report(restored.rows(), 'Local LAN only')
         self.assertIn('Offline', report)
         self.assertNotIn('Never', report)
+        self.assertNotIn('192.0.2.10', report)
+        self.assertEqual(row['host'], '192.0.2.10:80')
         self.assertNotIn('online"', saved)
 
     def test_cloud_merge_deduplicates_channels_and_mac_and_preserves_local_status_name_and_address(self):
@@ -58,7 +61,9 @@ class InventoryReportTests(unittest.TestCase):
         self.assertIn('02:00:00:00:00:02', report)
         self.assertIn('020000000002', report)  # Assigned names are optional in the documented API.
         self.assertIn('0 online, 2 offline', report)
-        self.assertLess(report.index('192.0.2.9'), report.index('192.0.2.20'))
+        self.assertNotIn('192.0.2.9', report)
+        self.assertNotIn('192.0.2.20', report)
+        self.assertEqual({row['host'] for row in rows}, {'192.0.2.9', '192.0.2.20:80'})
         self.assertNotIn('DO NOT RETAIN', str(cloud))
         self.assertEqual(history.saved(), '{}')
 

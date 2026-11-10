@@ -307,6 +307,9 @@ Current Indigo device names are attached to the report snapshot by physical bind
 including disabled channels. They are sorted/deduplicated within each physical row,
 kept separate from the Shelly name and never stored in device history. Renaming an
 Indigo device therefore changes the next report without a plugin restart.
+The formatter displays IP addresses only for locally online rows. Offline/Never
+rows have a blank address cell; cached endpoints remain intact in history/bindings
+for identity matching and reconnection.
 
 The OAuth listener is temporary, bound to 127.0.0.1 on a random port with a random
 path and state. Callback bodies/request lines are bounded, connections time out,
