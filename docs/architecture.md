@@ -21,7 +21,9 @@ existing Gen2 compatibility remains. Gen1 and new Gen2-specific work are off the
 roadmap. Discovery is IPv4 Bonjour plus explicit hosts. Devices must already be
 provisioned onto the LAN.
 
-- Persistent identity is Shelly device ID plus component, never IP address.
+- Persistent bindings retain the saved Shelly ID plus component, never IP address.
+  A firmware-prefix alias requires the saved/reported ID suffixes and reported full
+  MAC to agree; wire identity remains the actual reported RPC ID.
 - Discovery and polling never create Indigo devices. Creation is explicit.
 - Existing Indigo IDs, names and valid bindings survive upgrades and address moves.
 - Output state comes from reports, not command intentions. Unknown input position
@@ -72,6 +74,28 @@ A worker reads public `Shelly.GetDeviceInfo` without credentials before protecte
 calls. An identity mismatch terminates that worker and schedules a fresh public
 probe for the actual occupant. Every worker captures an endpoint generation;
 queued or late messages from a retired worker are ignored.
+
+Firmware-prefix aliases use full-MAC consistency helpers in `bindings.py`. Bonjour
+hints can select one existing binding candidate, after stale-address filtering, but
+never authorize it. The worker reads public GetDeviceInfo and accepts an alias only
+when both full ID suffixes agree with the explicitly reported full MAC. Ambiguous
+binding candidates are not guessed. For accepted aliases, `device_info.id` and
+`expected_id` retain the saved logical binding; the worker-generated `rpc_id` records
+the firmware ID. Session source/realm checks always pin to the original reported ID,
+while credential lookup uses the existing bound ID. No password keys, Indigo device
+IDs/names or trigger references are migrated; normal endpoint updates still apply. Missing/inconsistent MAC
+proof for the same suffix uses normal bounded retry rather than a hot mismatch loop;
+a vacated ambiguous probe ends without authentication. A different full MAC keeps
+the existing replacement-unit behavior. An explicit unhinted discovery is fenced
+and re-entered with its verified matching binding before its results can publish.
+
+The communication-policy snapshot also tracks fully disabled physical MACs, so a
+changed prefix cannot resume a disabled-only unit. A public identity observation
+can cache its verified alias under the existing ID for later resume. History removes
+obsolete matching-MAC records after a fresh observation; report snapshots also
+coalesce previously saved aliases, prioritizing current data and retaining all
+assigned Indigo names. An Info notice records the recognized alias once per
+reported RPC ID during a plugin lifetime. No cloud data is used to authorize aliases.
 
 A ready worker claims the physical identity and retires workers for its former
 addresses, including workers that never completed setup. Inventories, component
@@ -341,3 +365,15 @@ the loopback/simulated test evidence.
 - [Shelly Light](https://shelly-api-docs.shelly.cloud/gen2/ComponentsAndServices/Light/)
 - [Indigo lifecycle](https://docs.indigodomo.com/2025.2/plugin-dev/guide/)
 - [Indigo configuration fields](https://docs.indigodomo.com/2025.2/plugin-dev/reference/xml/configui/text-field/)
+
+
+## Focused firmware-identity review — 12 November 2026
+
+The change prompted a focused review of address-reuse, credential, source/realm,
+communication-disable and inventory regressions before implementation. Existing
+coverage was retained. New synthetic loopback cases cover an RPC prefix plus IP
+change, original Indigo input IDs/names, the existing Button Pressed reference,
+full-MAC failure cases before password lookup, authenticated replies from the new
+wire ID, disabled-only aliases, finite vacated probes, unhinted discovery and
+coalescing stale history entries. Tests use synthetic identities/MACs; no owner
+inventory or account details are included in this public evidence.

@@ -10,6 +10,7 @@ import time
 from urllib.parse import urlsplit
 from .modbus import read_button_inputs
 from .sampling import Sampler
+from .bindings import identity_mac, matches_physical_identity
 from .rpc import AuthenticationError, ProtocolError, RpcError, Session
 
 
@@ -334,24 +335,34 @@ class Worker(threading.Thread):
                     # Device identity is public. Never answer a password challenge before checking it.
                     session = Session(self.socket, self._notify, timeout=self.rpc_timeout)
                     info = self._object(session.call("Shelly.GetDeviceInfo"), "Shelly.GetDeviceInfo")
-                    identity = info.get("id")
+                    identity = reported_id = info.get("id")
+                    info.pop("rpc_id", None)  # Only this worker can annotate a verified alias.
                     if not isinstance(identity, str) or not identity or info.get("gen") not in (2, 3, 4):
                         raise RpcError("Requires a Gen2, Gen3 or Gen4 Shelly RPC device")
-                    if identity == self.exclude_id:
+                    if identity == self.exclude_id or matches_physical_identity(self.exclude_id, info):
                         self.emit("alias", self.address, info)
                         break
+                    if (identity_mac(self.exclude_id) and identity_mac(self.exclude_id) == identity_mac(identity)):
+                        raise ProtocolError("Changed RPC identity lacks a consistent full MAC; probe retired")
                     # Finding a different unit completes a vacated-address probe;
                     # authentication and subsequent reconnects use normal discovery policy.
                     self.exclude_id = None
                     if self.expected_id and identity != self.expected_id:
-                        raise IdentityChanged(info)
+                        if not matches_physical_identity(self.expected_id, info):
+                            if identity_mac(self.expected_id) and identity_mac(self.expected_id) == identity_mac(identity):
+                                raise ProtocolError("Changed RPC identity could not be verified by a consistent full MAC")
+                            raise IdentityChanged(info)
+                        # Preserve binding/password keys, but pin RPC source and
+                        # digest checks to the firmware's actual public identity.
+                        info = {**info, "id": self.expected_id, "rpc_id": reported_id}
+                        identity = self.expected_id
                     if self.permitted is not None and not self.permitted(identity):
                         self.emit("suspended", self.address, info)
                         break
                     self.expected_id = identity
                     self.device_info = dict(info)
                     self.emit("identified", self.address, dict(info))
-                    session.identity = identity
+                    session.identity = reported_id
                     session.password = self.password(identity) if callable(self.password) else self.password
                     self.sample_epoch += 1
                     self.config_dirty = True

@@ -138,7 +138,7 @@ class Simulator(socketserver.StreamRequestHandler):
             result = {'id': getattr(server, 'identity', 'shelly-simulator'),
                       'gen': getattr(server, 'gen', 3), 'model': 'test', 'auth_en': bool(getattr(server, 'password', ''))}
             if result['gen'] == 4:
-                result['mac'] = 'E4B06365AF10'
+                result['mac'] = getattr(server, 'mac', 'E4B06365AF10')
             return result
         if method == 'Shelly.GetStatus':
             return deepcopy(server.state)

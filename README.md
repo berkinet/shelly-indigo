@@ -1,4 +1,4 @@
-# Shelly for Indigo — 0.2.8 beta
+# Shelly for Indigo — 0.2.9 beta
 
 Shelly for Indigo follows a simple design philosophy: small, lightweight software
 built to meet a well-defined need. It provides direct, local communication between
@@ -87,6 +87,18 @@ consistency checks. Distinct device passwords limit credential reuse.
 Names configured locally on the device prefix internal IDs in new Indigo names
 and selectors. The local API may not expose labels stored only in the Shelly app's
 cloud account. Existing Indigo names are preserved.
+
+A firmware change can alter the model prefix of a Shelly's RPC ID while keeping
+its full MAC. When the saved ID, reported ID suffix and reported MAC all agree,
+the plugin retains the existing binding ID, Indigo devices/names, trigger references
+and password scope. RPC source checks and digest authentication use the actual
+reported firmware ID. No device recreation or password re-entry is required.
+Missing or inconsistent MAC evidence never authorizes a prefix alias; a different
+unit at a reused IP still follows the existing identity-mismatch handling. These
+are consistency checks on the trusted LAN, not cryptographic device authentication.
+Inventory history coalesces matching full-MAC aliases into one physical row, keeping
+current local observations and assigned Indigo names. Disabled communication still
+applies across a changed prefix.
 
 Output state changes only from device reports. Commands wake the worker immediately
 and verify only the affected output; they do not fetch all configuration or sample
@@ -274,14 +286,14 @@ runtime archives; isolated source-build tooling is not a fully reproducible buil
 or a vendored-library security audit.
 
 For a release, commit and push the intended source, wait for the complete CI
-workflow, then run `python3.13 tools/release.py --tag v0.2.8-beta.1 --publish`.
-Use a new tag such as `v0.2.8-beta.2` for another beta of the same plugin version;
+workflow, then run `python3.13 tools/release.py --tag v0.2.9-beta.1 --publish`.
+Use a new tag such as `v0.2.9-beta.2` for another beta of the same plugin version;
 `--notes-file` and `--title` can override defaults. A tag without a prerelease suffix
 creates a stable release. The tool reruns checks and builds a fresh archive with a
 source-commit and SHA-256 manifest. Existing releases/assets are not overwritten.
 
 See [architecture](docs/architecture.md), the [original project review](docs/project-review-2026-11-02.md),
-[beta release notes](docs/release-0.2.8-beta.1.md) and [dependency licenses](docs/third-party.md).
+[beta release notes](docs/release-0.2.9-beta.1.md) and [dependency licenses](docs/third-party.md).
 
 ## License
 

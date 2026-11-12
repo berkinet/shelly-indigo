@@ -13,7 +13,7 @@ import shelly
 sys.path.insert(0, str(Path(shelly.__file__).resolve().parents[2] / "Packages"))
 import indigo
 from shelly.commands import translate
-from shelly.bindings import expected_device_type, selection_key, channel_properties, device_label, channel_label
+from shelly.bindings import expected_device_type, selection_key, channel_properties, device_label, channel_label, identity_mac, matches_physical_identity
 from shelly.catalog import Catalog, ALL_DEVICES
 from shelly.dialogs import DeviceDialogs
 from shelly.buttons import ButtonEvents
@@ -55,6 +55,7 @@ class Plugin(indigo.PluginBase):
         self.reported_channel_warnings = self.diagnostics.warnings
         self._next_maintenance = 0
         self.reported_binding_errors = {}
+        self.reported_rpc_ids = {}
         self.dialogs = DeviceDialogs(self.catalog_service, self._devices, lambda key: indigo.devices[key],
                                      self.credential_edits, self.connections.owners, self._emit, self.logger, indigo.Dict)
         self.button_events = ButtonEvents(self._devices, lambda key: indigo.devices[key],
@@ -215,11 +216,26 @@ class Plugin(indigo.PluginBase):
         self.catalog_service.cache_paused(address, info)
 
     def _suspend_identity(self, address, info):
+        bound = self._binding_identity(info["id"])
+        if bound != info["id"] and matches_physical_identity(bound, info):
+            info = {**info, "id": bound, "rpc_id": info["id"]}
         self._pause(address)
         self._cache_paused_identity(address, info)
 
+    def _binding_identity(self, identity):
+        if not identity:
+            return identity
+        bindings = {dev.pluginProps.get("shellyId") for dev in self._devices() if self._selection_key(dev.pluginProps)}
+        if identity in bindings:
+            return identity
+        mac = identity_mac(identity)
+        candidates = {bound for bound in bindings if mac and identity_mac(bound) == mac}
+        return next(iter(candidates)) if len(candidates) == 1 else identity
+
     def _connect(self, address, expected_id=None, exclude_id=None, hint_id=None):
         address = endpoint(address)
+        expected_id = self._binding_identity(expected_id)
+        hint_id = self._binding_identity(hint_id)
         previous = self.connections.vacated.get(address)
         if previous is not None and expected_id is None and exclude_id is None:
             owner = self.connections.owners.get(previous.identity)
@@ -234,6 +250,10 @@ class Plugin(indigo.PluginBase):
                 expected_id = previous.identity
             else:
                 exclude_id = previous.identity
+        if expected_id is None and hint_id and any(dev.pluginProps.get("shellyId") == hint_id for dev in self._devices()):
+            # Bonjour picks a candidate; the worker must still verify its public
+            # identity/MAC before admitting bindings or accessing credentials.
+            expected_id = hint_id
         known = self.info.get(address, {}).get("id")
         if known is None and address in self.workers:
             known = self.workers[address].expected_id
@@ -585,9 +605,21 @@ class Plugin(indigo.PluginBase):
             if worker is not None and worker.online:
                 worker.command("Shelly.GetStatus", {})
         elif kind == "identified":
+            bound = self._binding_identity(payload["id"])
+            if bound != payload["id"] and matches_physical_identity(bound, payload):
+                # A host without a Bonjour hint can discover an alias first.
+                # Fence that session and re-enter using the existing binding ID.
+                self._retire(address)
+                self._connect(address, bound)
+                return
             if not self._communication_allowed(address, payload["id"]):
                 self._suspend_identity(address, payload)
                 return
+            rpc_id = payload.get("rpc_id")
+            if rpc_id and self.reported_rpc_ids.get(payload["id"]) != rpc_id:
+                self.reported_rpc_ids[payload["id"]] = rpc_id
+                label, context = self._connection_log_context(address, payload["id"], info=payload)
+                self.logger.info("Shelly %s recognized RPC ID %s by full MAC; retaining Indigo bindings; %s", label, rpc_id, context)
             self.catalog_service.identified(address, payload)
             self.device_history.observe(address, payload, online=False)
         elif kind == "alias":

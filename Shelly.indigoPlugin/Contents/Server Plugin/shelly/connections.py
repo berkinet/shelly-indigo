@@ -3,6 +3,7 @@ from dataclasses import dataclass
 import itertools
 import time
 import threading
+from .bindings import identity_mac
 
 
 @dataclass
@@ -83,19 +84,27 @@ class CommunicationPolicy:
     def __init__(self):
         self.lock = threading.Lock()
         self.disabled = set()
+        self.disabled_macs = set()
         self.disabled_channels = set()
 
     def replace(self, enabled_by_identity, enabled_by_channel=None):
         with self.lock:
             self.disabled = {identity for identity, enabled in enabled_by_identity.items() if not enabled}
+            physical = {}
+            for identity, enabled in enabled_by_identity.items():
+                mac = identity_mac(identity)
+                if mac:
+                    physical[mac] = physical.get(mac, False) or enabled
+            self.disabled_macs = {mac for mac, enabled in physical.items() if not enabled}
             self.disabled_channels = {key for key, enabled in (enabled_by_channel or {}).items() if not enabled}
 
     def permits(self, identity):
         with self.lock:
-            return identity not in self.disabled
+            return identity not in self.disabled and identity_mac(identity) not in self.disabled_macs
 
     def permits_command(self, identity, method, params):
         namespace = method.split(".")[0].lower()
         component = f"{namespace}:{params['id']}" if "id" in params else None
         with self.lock:
-            return identity not in self.disabled and (identity, component) not in self.disabled_channels
+            return (identity not in self.disabled and identity_mac(identity) not in self.disabled_macs
+                    and (identity, component) not in self.disabled_channels)

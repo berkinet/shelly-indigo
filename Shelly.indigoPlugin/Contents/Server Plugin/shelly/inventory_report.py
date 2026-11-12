@@ -4,12 +4,12 @@ from datetime import datetime
 import ipaddress
 import json
 import math
-import re
 import threading
 import time
 from urllib.parse import urlsplit
 
 from .discovery import Discovery
+from .bindings import mac_key, identity_mac
 
 
 def text(value, limit=160):
@@ -19,10 +19,7 @@ def text(value, limit=160):
 
 
 def mac_address(value):
-    value = text(value, 32)
-    if not re.fullmatch(r"(?:[0-9a-fA-F]{12}|(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})", value):
-        return ""
-    return value.replace(":", "").lower()
+    return mac_key(value)
 
 
 def ip_address(value):
@@ -96,6 +93,14 @@ class DeviceHistory:
         if not identity:
             return
         record = self.records.setdefault(identity, {"id": identity})
+        mac = mac_address(info.get("mac"))
+        for other, prior in list(self.records.items()):
+            if other != identity and mac and mac_address(prior.get("mac")) == mac:
+                for key in ("name", "model", "mac"):
+                    if not record.get(key) and prior.get(key):
+                        record[key] = prior[key]
+                self.records.pop(other)
+                self.online.discard(other)
         record.update(host=address, last_seen=time.time())
         for key in ("name", "model"):
             if key in info:
@@ -117,14 +122,35 @@ class DeviceHistory:
     def rows(self, bindings=(), cloud=()):
         records = deepcopy(self.records)
         indigo_names = {}
+        bound_ids = set()
         for props in bindings:
             identity = text(props.get("shellyId"))
+            if identity:
+                bound_ids.add(identity)
             if identity and identity not in records:
                 records[identity] = {"id": identity, "host": text(props.get("host")),
                                      "model": text(props.get("model")), "last_seen": None}
             name = text(props.get("indigoName"))
             if identity and name:
                 indigo_names.setdefault(identity, set()).add(name)
+        # Coalesce historical firmware prefixes before the cloud merge. Current
+        # observed data wins, while an assigned ID retains all Indigo names.
+        groups = {}
+        for identity, record in records.items():
+            key = mac_address(record.get("mac")) or identity_mac(identity) or identity
+            groups.setdefault(key, []).append(identity)
+        combined, online_ids = {}, set()
+        for members in groups.values():
+            canonical = next((identity for identity in members if identity in bound_ids), members[0])
+            sources = sorted(members, key=lambda identity: (identity in self.online, records[identity].get("last_seen") or 0), reverse=True)
+            record = {"id": canonical}
+            for key in ("host", "mac", "name", "model", "last_seen"):
+                record[key] = next((records[identity][key] for identity in sources if records[identity].get(key)), None)
+            combined[canonical] = record
+            indigo_names[canonical] = set().union(*(indigo_names.get(identity, set()) for identity in members))
+            if any(identity in self.online for identity in members):
+                online_ids.add(canonical)
+        records = combined
         # Match full MACs first. A full cloud Wi-Fi ID can also match an observed
         # MAC or the suffix of a verified local ID, without inventing a MAC value.
         by_mac = {record["mac"]: identity for identity, record in records.items() if record.get("mac")}
@@ -147,7 +173,7 @@ class DeviceHistory:
                 by_cloud_id[cloud_id] = match
             if item.get("mac"):
                 by_mac[item["mac"]] = match
-        return [{**record, "online": identity in self.online,
+        return [{**record, "online": identity in online_ids,
                  "indigo_names": sorted(indigo_names.get(identity, ()), key=str.casefold)}
                 for identity, record in records.items()]
 

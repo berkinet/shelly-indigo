@@ -1,4 +1,27 @@
 """Stable physical/channel bindings and display labels; no Indigo dependency."""
+import re
+
+
+def mac_key(value):
+    if not isinstance(value, str):
+        return ""
+    value = value.strip()
+    if not re.fullmatch(r"(?:[0-9a-fA-F]{12}|(?:[0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2})", value):
+        return ""
+    return value.replace(":", "").lower()
+
+
+def identity_mac(identity):
+    if not isinstance(identity, str):
+        return ""
+    match = re.fullmatch(r"shelly[a-z0-9_-]*-([0-9a-f]{12})", identity or "", re.IGNORECASE | re.ASCII)
+    return match[1].lower() if match else ""
+
+
+def matches_physical_identity(expected, info):
+    """Accept a prefix change only with consistent full MACs, never just an IP."""
+    mac = identity_mac(expected)
+    return bool(mac and mac == mac_key(info.get("mac")) == identity_mac(info.get("id")))
 
 def expected_device_type(props):
     component = props.get("component", "")
